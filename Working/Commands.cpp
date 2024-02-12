@@ -912,14 +912,15 @@ void ForegroundCommand::execute()
   {
     return;
   }
-
-  if (waitpid(job->getJobPid(), nullptr, WUNTRACED) != 0) // options == 0 will wait for the process to finish
+  pid_t pid = job->getJobPid();
+  std::cout << job->getCommand()->getCMDLine() << " " << pid << "\n";
+  jobslist.removeJobById(m_id);
+  if (waitpid(pid, nullptr, WUNTRACED) != 0) // options == 0 will wait for the process to finish
   {
     perror("smash error: waitpid failed");
     return;
   }
 
-  jobslist.removeJobById(m_id);
 }
 
 // * BuiltInCommand 7 (QuitCommand)
