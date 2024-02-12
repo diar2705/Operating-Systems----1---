@@ -99,8 +99,8 @@ void _removeBackgroundSign(char *cmd_line)
 
 Command::Command(const char *cmd_line)
     : m_ground_type((_isBackgroundCommand(cmd_line)) ? (GroundType::Background) : (GroundType::Foreground)),
-      m_cmd_line(cmd_line), // (m_ground_type == GroundType::Background) ? _trim(m_remove_background_sign(cmd_line)) : _trim(cmd_line)
-      m_valid(true)
+      m_cmd_line(cmd_line) // (m_ground_type == GroundType::Background) ? _trim(m_remove_background_sign(cmd_line)) : _trim(cmd_line)
+
 {
 }
 
@@ -915,14 +915,13 @@ void ForegroundCommand::execute()
   pid_t pid = job->getJobPid();
   SmallShell::getInstance().setCurrForegroundPID(pid);
   std::cout << job->getCommand()->getCMDLine() << " " << pid << "\n";
+  jobslist.removeJobById(m_id);
   if (waitpid(pid, nullptr, WUNTRACED) != 0) // options == 0 will wait for the process to finish
   {
     perror("smash error: waitpid failed");
-  jobslist.removeJobById(m_id);
 
     return;
   }
-  jobslist.removeJobById(m_id);
 
   SmallShell::getInstance().setCurrForegroundPID(-1);
 }
@@ -1115,17 +1114,20 @@ void JobsList::killAllJobs()
 
 void JobsList::removeFinishedJobs()
 {
-  for(std::list<JobEntry>::iterator it = getList().begin(); it != getList().end();)
-  {
-    if (waitpid((*it).getJobPid(), nullptr, WNOHANG) > 0)
-    {
-      getList().erase(it++);
+  std::vector<int> ids;
+
+    for (auto &job : getList()){
+      if (waitpid(job.getJobPid(), nullptr, WNOHANG) > 0)
+      {
+        ids.push_back(job.getJobID());
+      }
     }
-    else
+
+    for (int id : ids) 
     {
-      ++it;
+      removeJobById(id);
     }
-  }
+    
 }
 
 JobsList::JobEntry *JobsList::getJobById(int jobId)
@@ -1157,10 +1159,7 @@ JobsList::JobEntry *JobsList::getLastJob()
   return getList().size() ? &getList().back() : nullptr;
 }
 
-JobsList::JobEntry *JobsList::getLastStoppedJob(int *jobId)
-{
-  return nullptr; // TODO implement
-}
+
 
 /* *
  * The Small Shell class

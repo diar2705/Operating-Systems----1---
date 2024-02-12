@@ -25,7 +25,7 @@ class Command
   /* variables */
   GroundType m_ground_type; // should come before the command line
   std::string m_cmd_line;   // command line
-  bool m_valid;
+
 
 public:
   /* methods */
@@ -38,8 +38,6 @@ public:
   bool isBackground() const { return m_ground_type == GroundType::Background; }
   std::string m_remove_background_sign(const char *cmd_line) const;
 
-  void invalidate_command() { m_valid = false; }
-  bool is_valid() const { return m_valid; }
 };
 
 /*
@@ -339,7 +337,6 @@ public:
   JobEntry *getJobById(int jobId);
   void removeJobById(int jobId);
   JobEntry *getLastJob();
-  JobEntry *getLastStoppedJob(int *jobId);
 
 private:
   /* variables */
