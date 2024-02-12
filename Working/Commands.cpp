@@ -283,7 +283,7 @@ RedirectionCommand::RedirectionCommand(const char *cmd_line)
 
 RedirectionCommand::~RedirectionCommand()
 {
-  // default
+  delete m_command;
 }
 
 void RedirectionCommand::execute()
@@ -456,7 +456,8 @@ PipeCommand::PipeCommand(const char *cmd_line)
 
 PipeCommand::~PipeCommand()
 {
-  // default
+  delete m_cmd_1;
+  delete m_cmd_2;
 }
 
 void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could get full, i think we need fork
@@ -1012,14 +1013,15 @@ KillCommand::~KillCommand()
 void KillCommand::execute()
 {
   JobsList &job_list = SmallShell::getInstance().getJobsList();
-  JobsList::JobEntry* job;
-  if ((job = job_list.getJobById(m_job_id)) != nullptr)
+  JobsList::JobEntry* job = job_list.getJobById(m_job_id);
+  if (job != nullptr)
   {
     if (kill(job->getJobPid(), m_signal_number) != 0) // failure
     {
       perror("smash error: kill failed");
       return;
     }
+    std::cout << "signal number "<< m_signal_number <<" was sent to pid " << job->getJobPid() << "\n";
   }
 }
 
