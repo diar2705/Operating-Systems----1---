@@ -177,10 +177,12 @@ void ExternalCommand::execute()
       if (execlp("/bin/bash", "/bin/bash", "-c", command_line, nullptr) != 0) // failure
       {
         perror("smash error: execlp failed");
+        return;
       }
     }
     else
     {
+
       char *args[COMMAND_MAX_ARGS + 1] = {0};
       char trimmed_cmd_line[COMMAND_MAX_LENGTH + 1];
 
@@ -199,15 +201,17 @@ void ExternalCommand::execute()
   }
   else // * parent
   {
+    m_pid = pid;
     if (isBackground())
     {
-      SmallShell::getInstance().getJobsList().addJob(this, pid);
+      SmallShell::getInstance().getJobsList().addJob(this, m_pid);
     }
     else
     {
-      if (waitpid(pid, nullptr, WUNTRACED) == -1)
+      if (waitpid(m_pid, nullptr, WUNTRACED) == -1)
       {
         perror("smash error: waitpid failed");
+        return;
       }
     }
   }
@@ -251,7 +255,6 @@ RedirectionCommand::RedirectionType RedirectionCommand::get_redirection_type(con
   if (first_symbol_index == std::string::npos)
   {
     throw logic_error("something went wrong in RedirectionCommand::get_redirection_type\n");
-    // or invalidate_command();
   }
   else
   {
@@ -259,7 +262,6 @@ RedirectionCommand::RedirectionType RedirectionCommand::get_redirection_type(con
     if (first_symbol_index >= s.size() - 1)
     {
       throw logic_error("something went wrong in RedirectionCommand::get_redirection_type\n");
-      // or invalidate_command();
     }
     else
     {
@@ -293,7 +295,6 @@ RedirectionCommand::RedirectionCommand(const char *cmd_line)
     Command *m_command = SmallShell::getInstance().CreateCommand(command_str.c_str());
     if (m_command == nullptr)
     {
-      invalidate_command();
       return;
     }
     m_file_path = _trim(cmd_str.substr(cmd_str.find_last_of(">") + 1));
@@ -327,6 +328,7 @@ void RedirectionCommand::execute()
   if (close(STANDARD::OUT))
   {
     perror("smash error: close failed");
+    return;
   }
 
   if (m_redirection_type == RedirectionType::Override)
@@ -477,7 +479,7 @@ PipeCommand::~PipeCommand()
   // default
 }
 
-void PipeCommand::execute()
+void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could get full, i think we need fork
 {
   // this command will not be tested with &
   enum PIPE
@@ -605,6 +607,7 @@ void ChmodCommand::execute()
   if (chmod(getArgs().back().c_str(), mode) == -1) // getArgs().back() is the file path
   {
     perror("smash error: chmod failed");
+    return;
   }
 }
 
@@ -749,7 +752,7 @@ ChangeDirCommand::ChangeDirCommand(const char *cmd_line)
   if (getArgs().size() > 1) // more than one argument
   {
     std::cerr << "smash error: cd: too many arguments\n";
-    invalidate_command();
+    throw std::logic_error("ChangeDirCommand::ChangeDirCommand");
   }
 }
 
@@ -763,9 +766,9 @@ void ChangeDirCommand::execute()
   // 0 arguments for cd will NOT be tested
 
   // get the current working directory
-  char cwd[COMMAND_MAX_PATH_LENGTH+1];
+  char cwd[COMMAND_MAX_PATH_LENGTH + 1];
   // `getcwd()` writes the absolute pathname of the current working directory to the `path` array
-  if (getcwd(cwd, COMMAND_MAX_PATH_LENGTH+1) == nullptr) // failure
+  if (getcwd(cwd, COMMAND_MAX_PATH_LENGTH + 1) == nullptr) // failure
   {
     perror("smash error: getcwd failed");
     return;
@@ -807,6 +810,7 @@ void ChangeDirCommand::execute()
     else
     {
       perror("smash error: chdir failed");
+      return;
     }
   }
   else // "normal path"
@@ -819,6 +823,7 @@ void ChangeDirCommand::execute()
     else
     {
       perror("smash error: chdir failed");
+      return;
     }
   }
 }
@@ -930,6 +935,7 @@ void ForegroundCommand::execute()
   if (waitpid(job->getJobPid(), nullptr, WUNTRACED) != 0) // options == 0 will wait for the process to finish
   {
     perror("smash error: waitpid failed");
+    return;
   }
 
   jobslist.removeJobById(m_id);
@@ -978,7 +984,7 @@ KillCommand::KillCommand(const char *cmd_line)
   if (getArgs().size() != 2)
   {
     std::cerr << "smash error: kill: invalid arguments\n";
-    invalidate_command();
+    throw std::logic_error("KillCommand::KillCommand");
   }
 
   try
@@ -992,7 +998,7 @@ KillCommand::KillCommand(const char *cmd_line)
     else // signal didn't have a dash before it
     {
       std::cerr << "smash error: kill: invalid arguments\n";
-      invalidate_command();
+      throw std::logic_error("KillCommand::KillCommand");
     }
 
     m_signal_number = std::stoi(signal_string);
@@ -1001,14 +1007,14 @@ KillCommand::KillCommand(const char *cmd_line)
   catch (const std::exception &e)
   {
     std::cerr << "smash error: kill: invalid arguments\n";
-    invalidate_command();
+    throw std::logic_error("KillCommand::KillCommand");
   }
 
   // check if the job id actually exists
   if (SmallShell::getInstance().getJobsList().getJobById(m_job_id) == nullptr)
   {
     std::cerr << "smash error: kill: job-id " << m_job_id << " does not exist\n";
-    invalidate_command();
+    throw std::logic_error("KillCommand::KillCommand");
   }
 }
 
@@ -1020,11 +1026,13 @@ KillCommand::~KillCommand()
 void KillCommand::execute()
 {
   JobsList &job_list = SmallShell::getInstance().getJobsList();
-  if (job_list.getJobById(m_job_id) != nullptr)
+  JobsList::JobEntry* job;
+  if ((job = job_list.getJobById(m_job_id)) != nullptr)
   {
-    if (kill(job.getJobPid(), m_signal_number) != 0) // failure
+    if (kill(job->getJobPid(), m_signal_number) != 0) // failure
     {
       perror("smash error: kill failed");
+      return;
     }
   }
 }
@@ -1107,6 +1115,7 @@ void JobsList::killAllJobs()
     if (kill(job.getJobPid(), SIGKILL) != 0) // failure
     {
       perror("smash error: kill failed");
+      return;
     }
   }
   getList().clear();
@@ -1152,7 +1161,7 @@ void JobsList::removeJobById(int jobId)
   }
 }
 
-JobsList::JobEntry *JobsList::getLastJob(int *lastJobId)
+JobsList::JobEntry *JobsList::getLastJob()
 {
   return getList().size() ? &getList().back() : nullptr;
 }
@@ -1189,8 +1198,14 @@ void SmallShell::executeCommand(const char *cmd_line)
   Command *cmd = CreateCommand(cmd_line);
   if (cmd)
   {
-
-    cmd->execute();
+    try
+    {
+      cmd->execute();
+    }
+    catch (const std::exception &e)
+    {
+      std::cerr << e.what() << '\n';
+    }
   }
 }
 
@@ -1199,7 +1214,7 @@ void SmallShell::executeCommand(const char *cmd_line)
 SmallShell::SmallShell()
     : m_prompt(DEFAULT_PROMPT),
       m_background_jobs(), // default c'tor (empty list)
-      m_currForegroundPID(0)
+      m_currForegroundPID(-1)
 {
 }
 

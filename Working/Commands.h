@@ -61,6 +61,8 @@ class ExternalCommand : public Command
   };
   Complexity m_complexity;
 
+  pid_t m_pid;
+
   /* methods */
   Complexity _get_complexity_type(const char *cmd_line);
 
@@ -68,6 +70,14 @@ public:
   ExternalCommand(const char *cmd_line);
   virtual ~ExternalCommand();
   void execute() override;
+  const pid_t getPID() const
+  {
+    return m_pid;
+  }
+  void setPID(pid_t pid)
+  {
+    m_pid = pid;
+  }
 };
 
 /*
@@ -249,6 +259,7 @@ public:
 class ForegroundCommand : public BuiltInCommand
 {
   int m_id;
+
 public:
   ForegroundCommand(const char *cmd_line);
   virtual ~ForegroundCommand();
@@ -327,7 +338,7 @@ public:
   void removeFinishedJobs();
   JobEntry *getJobById(int jobId);
   void removeJobById(int jobId);
-  JobEntry *getLastJob(int *lastJobId);
+  JobEntry *getLastJob();
   JobEntry *getLastStoppedJob(int *jobId);
 
 private:
@@ -362,12 +373,22 @@ public:
   const std::string &getPrompt() const;
   void setPrompt(const std::string &newPrompt);
 
+  const pid_t getCuttForegroundPID() const
+  {
+    return m_currForegroundPID;
+  }
+
+  void setCurrForegroundPID(pid_t pid)
+  {
+    m_currForegroundPID = pid;
+  }
+
 private:
   /* variables */
   std::string m_prompt; // originally set to DEFAULT_PROMPT
   JobsList m_background_jobs;
 
-  int m_currForegroundPID;
+  pid_t m_currForegroundPID;
 
   /* methods */
   SmallShell(); // private c'tor
