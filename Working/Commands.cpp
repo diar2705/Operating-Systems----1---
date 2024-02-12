@@ -208,11 +208,13 @@ void ExternalCommand::execute()
     }
     else
     {
+      SmallShell::getInstance().setCurrForegroundPID(m_pid);
       if (waitpid(m_pid, nullptr, WUNTRACED) == -1)
       {
         perror("smash error: waitpid failed");
         return;
       }
+      SmallShell::getInstance().setCurrForegroundPID(-1);
     }
   }
 }
@@ -951,6 +953,7 @@ void QuitCommand::execute()
     // else, if other arguments other than "kill" were provided they will be ignored
   }
   // exit the smash
+  delete this;
   exit(0);
 }
 
@@ -1105,10 +1108,9 @@ void JobsList::killAllJobs()
 
 void JobsList::removeFinishedJobs()
 {
-  std::list<JobEntry>::iterator it = getList().begin();
-  for (auto &job : getList())
+  for(std::list<JobEntry>::iterator it = getList().begin(); it != getList().end();)
   {
-    if (waitpid(job.getJobPid(), nullptr, WNOHANG) > 0)
+    if (waitpid((*it).getJobPid(), nullptr, WNOHANG) > 0)
     {
       getList().erase(it++);
     }
@@ -1221,6 +1223,10 @@ void SmallShell::setPrompt(const std::string &newPrompt)
 
 Command *SmallShell::CreateCommand_aux(const char *cmd_line)
 {
+  if(*cmd_line == '\0')
+  {
+    return nullptr;
+  }
   try
   {
     return new RedirectionCommand(cmd_line);
