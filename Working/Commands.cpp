@@ -919,10 +919,8 @@ void ForegroundCommand::execute()
   if (waitpid(pid, nullptr, WUNTRACED) != 0) // options == 0 will wait for the process to finish
   {
     perror("smash error: waitpid failed");
-
     return;
   }
-
   SmallShell::getInstance().setCurrForegroundPID(-1);
 }
 
