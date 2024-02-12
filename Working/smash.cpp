@@ -22,10 +22,6 @@ int main(int argc, char *argv[])
      * from the OS, after using the alarm() system call.
      * here we set the handler to the alarmHandler function defined in signals.h
      */
-    if (sigaction(SIGALRM) == SIG_ERR)
-    {
-        perror("smash error: failed to set alarm handler");
-    }
     
 
     // get the smash singleton instance locally

@@ -314,20 +314,20 @@ public:
   {
   public:
     /* methods */
-    JobEntry(Command *command, pid_t job_pid, unsigned int job_id);
+    JobEntry(Command *command, pid_t job_pid, int job_id);
     Command *getCommand();
     pid_t getJobPid();
-    unsigned int getJobID();
+    int getJobID();
 
   private:
     /* variables */
     Command *m_command;
     pid_t m_job_pid;       // since the job is run in the background we must have used fork()
-    unsigned int m_job_id; // the job id in the list
+    int m_job_id; // the job id in the list
   };
 
   /* methods */
-  unsigned int size() const;
+  int size() const;
   std::list<JobEntry> &getList();
 
   JobsList();

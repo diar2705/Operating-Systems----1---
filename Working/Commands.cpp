@@ -230,17 +230,13 @@ bool _is_redirection_command(const char *cmd_line)
     std::string s(cmd_line);
     // if no > were found, return false
     int index_first = s.find_first_of(">");
-    int index_second = s.find_last_of(">");
-    if (index_first == std::string::npos)
+    //std::cout << "index is " << index_first << "\n";
+    if (index_first == -1)
     {
       return false;
     }
     else
     {
-      if (index_second - index_first > 1)
-      {
-        return false; // there are more than two ">>"
-      }
       return true;
     }
   }
@@ -251,29 +247,14 @@ RedirectionCommand::RedirectionType RedirectionCommand::get_redirection_type(con
 {
   // assumes there is atleast ">" or ">>"
   std::string s(cmd_line);
-  int first_symbol_index = s.find_first_of(">");
-  if (first_symbol_index == std::string::npos)
+  unsigned int first_symbol_index = s.find_first_of(">");
+  if (s[first_symbol_index + 1] == '>')
   {
-    throw logic_error("something went wrong in RedirectionCommand::get_redirection_type\n");
+    return RedirectionType::Append;
   }
   else
   {
-    // if this index is the last character (something is wrong)
-    if (first_symbol_index >= s.size() - 1)
-    {
-      throw logic_error("something went wrong in RedirectionCommand::get_redirection_type\n");
-    }
-    else
-    {
-      if (s[first_symbol_index + 1] == '>')
-      {
-        return RedirectionType::Append;
-      }
-      else
-      {
-        return RedirectionType::Override;
-      }
-    }
+    return RedirectionType::Override;
   }
 }
 
@@ -284,21 +265,18 @@ RedirectionCommand::RedirectionCommand(const char *cmd_line)
 {
   if (!_is_redirection_command(cmd_line))
   {
-    throw std::logic_error("shouldn't get here in RedirectionCommand::RedirectionCommand.");
+    throw std::logic_error("RedirectionCommand::RedirectionCommand.");
   }
-  RedirectionType m_redirection_type = get_redirection_type(cmd_line);
+  m_redirection_type = get_redirection_type(cmd_line);
 
-  if (is_valid())
+  std::string cmd_str(cmd_line);
+  std::string command_str = _trim(cmd_str.substr(0, cmd_str.find_first_of(">")));
+  m_command = SmallShell::getInstance().CreateCommand(command_str.c_str());
+  if (m_command == nullptr)
   {
-    std::string cmd_str(cmd_line);
-    std::string command_str = _trim(cmd_str.substr(0, cmd_str.find_first_of(">")));
-    Command *m_command = SmallShell::getInstance().CreateCommand(command_str.c_str());
-    if (m_command == nullptr)
-    {
-      return;
-    }
-    m_file_path = _trim(cmd_str.substr(cmd_str.find_last_of(">") + 1));
+    throw std::logic_error("RedirectionCommand::RedirectionCommand.");
   }
+  m_file_path = _trim(cmd_str.substr(cmd_str.find_last_of(">") + 1));
 }
 
 RedirectionCommand::~RedirectionCommand()
@@ -385,8 +363,8 @@ bool _is_pipe_command(const char *cmd_line)
 PipeCommand::PipeType PipeCommand::_get_pipe_type(const char *cmd_line)
 {
   std::string s(cmd_line);
-  int index_of_line = s.find_first_of("|");
-  int index_of_amp = s.find_first_of("&");
+  unsigned int index_of_line = s.find_first_of("|");
+  unsigned int index_of_amp = s.find_first_of("&");
 
   if (index_of_line != std::string::npos)
   {
@@ -408,7 +386,7 @@ PipeCommand::PipeType PipeCommand::_get_pipe_type(const char *cmd_line)
 Command *PipeCommand::_get_cmd_1(const char *cmd_line)
 {
   std::string s(cmd_line);
-  int index_of_line = s.find_first_of("|");
+  unsigned int index_of_line = s.find_first_of("|");
   if (index_of_line != std::string::npos)
   {
     Command *command = SmallShell::getInstance().CreateCommand(s.substr(0, index_of_line).c_str());
@@ -428,8 +406,8 @@ Command *PipeCommand::_get_cmd_2(const char *cmd_line)
 {
 
   std::string s(cmd_line);
-  int index_of_line = s.find_first_of("|");
-  int index_of_amp = s.find_first_of("&");
+  unsigned int index_of_line = s.find_first_of("|");
+  unsigned int index_of_amp = s.find_first_of("&");
 
   if (index_of_line != std::string::npos)
   {
@@ -963,7 +941,12 @@ void QuitCommand::execute()
   {
     if (getArgs().front() == "kill")
     {
-      SmallShell::getInstance().getJobsList().killAllJobs();
+      JobsList jobs = SmallShell::getInstance().getJobsList();
+      std::cout << "smash: sending SIGKILL signal to " << jobs.size() << " jobs:\n";
+      if(jobs.size() > 0)
+      {
+        jobs.killAllJobs();
+      }
     }
     // else, if other arguments other than "kill" were provided they will be ignored
   }
@@ -1042,7 +1025,7 @@ void KillCommand::execute()
  */
 
 /* The JobEntry class methods */
-JobsList::JobEntry::JobEntry(Command *command, pid_t job_pid, unsigned int job_id)
+JobsList::JobEntry::JobEntry(Command *command, pid_t job_pid, int job_id)
     : m_command(command),
       m_job_pid(job_pid),
       m_job_id(job_id)
@@ -1059,13 +1042,13 @@ pid_t JobsList::JobEntry::getJobPid()
   return m_job_pid;
 }
 
-unsigned int JobsList::JobEntry::getJobID()
+int JobsList::JobEntry::getJobID()
 {
   return m_job_id;
 }
 
 /* The JobList class methods */
-unsigned int JobsList::size() const
+int JobsList::size() const
 {
   return m_jobs.size();
 }
@@ -1108,7 +1091,6 @@ void JobsList::printJobsList()
 
 void JobsList::killAllJobs()
 {
-  std::cout << "smash: sending SIGKILL signal to " << getList().size() << " jobs:\n";
   for (auto &job : getList())
   {
     std::cout << job.getJobPid() << ": " << job.getCommand()->getCMDLine() << "\n";
@@ -1204,7 +1186,7 @@ void SmallShell::executeCommand(const char *cmd_line)
     }
     catch (const std::exception &e)
     {
-      std::cerr << e.what() << '\n';
+      //std::cerr << e.what() << '\n';
     }
   }
 }
@@ -1245,7 +1227,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   try
@@ -1254,7 +1236,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   try
@@ -1263,7 +1245,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   try
@@ -1272,7 +1254,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   try
@@ -1281,7 +1263,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   try
@@ -1290,7 +1272,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   try
@@ -1299,7 +1281,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   try
@@ -1308,7 +1290,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   try
@@ -1317,7 +1299,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   try
@@ -1326,7 +1308,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   try
@@ -1335,7 +1317,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    std::cout << e.what() << '\n';
+    //std::cout << e.what() << '\n';
   }
 
   return nullptr;
