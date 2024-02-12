@@ -915,15 +915,12 @@ void ForegroundCommand::execute()
   pid_t pid = job->getJobPid();
   SmallShell::getInstance().setCurrForegroundPID(pid);
   std::cout << job->getCommand()->getCMDLine() << " " << pid << "\n";
+  jobslist.removeJobById(m_id);
   if (waitpid(pid, nullptr, WUNTRACED) != 0) // options == 0 will wait for the process to finish
   {
     perror("smash error: waitpid failed");
-  jobslist.removeJobById(m_id);
-
     return;
   }
-  jobslist.removeJobById(m_id);
-
   SmallShell::getInstance().setCurrForegroundPID(-1);
 }
 
