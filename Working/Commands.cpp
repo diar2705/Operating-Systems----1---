@@ -1040,6 +1040,11 @@ JobsList::JobEntry::JobEntry(Command *command, pid_t job_pid, int job_id)
 {
 }
 
+JobsList::JobEntry::~JobEntry()
+{
+  delete m_command;
+}
+
 Command *JobsList::JobEntry::getCommand()
 {
   return m_command;

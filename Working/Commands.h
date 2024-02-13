@@ -313,6 +313,7 @@ public:
   public:
     /* methods */
     JobEntry(Command *command, pid_t job_pid, int job_id);
+    ~JobEntry();
     Command *getCommand();
     pid_t getJobPid();
     int getJobID();
