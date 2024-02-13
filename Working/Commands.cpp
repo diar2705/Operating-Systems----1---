@@ -601,6 +601,7 @@ BuiltInCommand::BuiltInCommand(const char *cmd_line)
       m_name(m_parse_name(cmd_line)),
       m_args(m_parse_args(cmd_line))
 {
+  setGround(GroundType::Foreground);
 }
 
 BuiltInCommand::~BuiltInCommand()
@@ -1193,6 +1194,10 @@ void SmallShell::executeCommand(const char *cmd_line)
     catch (const std::exception &e)
     {
       //std::cerr << e.what() << '\n';
+    }
+    if(!cmd->isBackground())
+    {
+      delete cmd;
     }
   }
 }

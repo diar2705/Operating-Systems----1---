@@ -14,18 +14,18 @@
  *    are background or foreground (this can be ignored during the command execution)
  * Not all commands has a name (pipe for example) so we wont have anything else here
  */
+enum class GroundType
+{
+  Foreground,
+  Background
+};
+
 class Command
 {
   /* types */
-  enum class GroundType
-  {
-    Foreground,
-    Background
-  };
   /* variables */
   GroundType m_ground_type; // should come before the command line
   std::string m_cmd_line;   // command line
-
 
 public:
   /* methods */
@@ -36,8 +36,8 @@ public:
   // virtual void cleanup(); // ? what are these
   const std::string &getCMDLine() const { return m_cmd_line; }
   bool isBackground() const { return m_ground_type == GroundType::Background; }
+  void setGround(GroundType ground) { m_ground_type = ground; }
   std::string m_remove_background_sign(const char *cmd_line) const;
-
 };
 
 /*
@@ -320,8 +320,8 @@ public:
   private:
     /* variables */
     Command *m_command;
-    pid_t m_job_pid;       // since the job is run in the background we must have used fork()
-    int m_job_id; // the job id in the list
+    pid_t m_job_pid; // since the job is run in the background we must have used fork()
+    int m_job_id;    // the job id in the list
   };
 
   /* methods */
