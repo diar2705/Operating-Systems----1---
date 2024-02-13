@@ -179,8 +179,6 @@ void ExternalCommand::execute()
         perror("smash error: execlp failed");
         return;
       }
-
-      delete command_line;
     }
     else
     {
@@ -197,14 +195,15 @@ void ExternalCommand::execute()
       if (execvp(args[0], args) == -1)
       {
         perror("smash error: setpgrp failed");
+        for (int i = 0; i <= COMMAND_MAX_ARGS; i++)
+        {
+          if(args[i] != nullptr)
+          {
+            free(args[i]);
+          }
+        }
         return;
       }
-      for (int i = 0; i <= COMMAND_MAX_ARGS; i++)
-      {
-        delete args[i];
-      }
-      delete args;
-      delete trimmed_cmd_line;
     }
   }
   else // * parent
@@ -489,7 +488,6 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
   if (pipe(files) == -1)
   {
     perror("smash error: pipe failed");
-    delete files;
     return;
   }
 
@@ -501,13 +499,11 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
     if (original_write == -1)
     {
       perror("smash error: dup failed");
-      delete files;
       return;
     }
     if (dup2(files[PIPE::WRITE], STANDARD::OUT))
     {
       perror("smash error: dup2 failed");
-      delete files;
       return;
     }
   }
@@ -517,13 +513,11 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
     if (original_write == -1)
     {
       perror("smash error: dup failed");
-      delete files;
       return;
     }
     if (dup2(files[PIPE::WRITE], STANDARD::ERR))
     {
       perror("smash error: dup2 failed");
-      delete files;
       return;
     }
   }
@@ -535,7 +529,6 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
   if (dup2(original_write, files[PIPE::WRITE]))
   {
     perror("smash error: dup2 failed");
-    delete files;
     return;
   }
 
@@ -544,13 +537,11 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
   if (original_read == -1)
   {
     perror("smash error: dup failed");
-    delete files;
     return;
   }
   if (dup2(files[PIPE::READ], STANDARD::IN))
   {
     perror("smash error: dup2 failed");
-    delete files;
     return;
   }
 
@@ -561,10 +552,8 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
   if (dup2(original_read, files[PIPE::READ]))
   {
     perror("smash error: dup2 failed");
-    delete files;
     return;
   }
-  delete files;
 }
 
 // * Special Commands 3 (ChmodCommand) , actually inherits from BuiltInCommand
@@ -734,7 +723,6 @@ void GetCurrDirCommand::execute()
     // ? should we print an error
     perror("smash error: getcwd failed");
   }
-  delete path;
 }
 
 // * BuiltInCommand 4 (ChangeDirCommand)
@@ -772,7 +760,6 @@ void ChangeDirCommand::execute()
   if (getcwd(cwd, COMMAND_MAX_PATH_LENGTH + 1) == nullptr) // failure
   {
     perror("smash error: getcwd failed");
-    delete cwd;
     return;
   }
   std::string curr_dir(cwd);
@@ -783,7 +770,6 @@ void ChangeDirCommand::execute()
     if (CD_PATH_HISTORY.size() == 0)
     {
       std::cerr << "smash error: cd: OLDPWD not set\n";
-      delete cwd;
       return;
     }
     else
@@ -797,7 +783,6 @@ void ChangeDirCommand::execute()
       else
       {
         perror("smash error: chdir failed");
-        delete cwd;
         return;
       }
     }
@@ -814,7 +799,6 @@ void ChangeDirCommand::execute()
     else
     {
       perror("smash error: chdir failed");
-      delete cwd;
       return;
     }
   }
@@ -828,11 +812,9 @@ void ChangeDirCommand::execute()
     else
     {
       perror("smash error: chdir failed");
-      delete cwd;
       return;
     }
   }
-  delete cwd;
 }
 
 /* methods */
@@ -1067,7 +1049,7 @@ JobsList::JobEntry::JobEntry(Command *command, pid_t job_pid, int job_id)
 
 JobsList::JobEntry::~JobEntry()
 {
-  delete m_command;
+  //delete m_command;
 }
 
 Command *JobsList::JobEntry::getCommand()
