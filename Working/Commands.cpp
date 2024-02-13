@@ -197,7 +197,7 @@ void ExternalCommand::execute()
         perror("smash error: setpgrp failed");
         for (int i = 0; i <= COMMAND_MAX_ARGS; i++)
         {
-          if(args[i] != nullptr)
+          if (args[i] != nullptr)
           {
             free(args[i]);
           }
@@ -918,6 +918,7 @@ void ForegroundCommand::execute()
   JobsList::JobEntry *job = jobslist.getJobById(m_id);
   if (!job)
   {
+    jobslist.removeJobById(m_id);
     return;
   }
   pid_t pid = job->getJobPid();
@@ -927,7 +928,6 @@ void ForegroundCommand::execute()
   if (waitpid(pid, nullptr, WUNTRACED) != 0) // options == 0 will wait for the process to finish
   {
     perror("smash error: waitpid failed");
-    return;
   }
   SmallShell::getInstance().setCurrForegroundPID(-1);
 }
@@ -1031,7 +1031,9 @@ void KillCommand::execute()
       perror("smash error: kill failed");
       return;
     }
+    
     std::cout << "signal number " << m_signal_number << " was sent to pid " << job->getJobPid() << "\n";
+    job_list.removeJobById(job->getJobID());
   }
 }
 
@@ -1049,7 +1051,7 @@ JobsList::JobEntry::JobEntry(Command *command, pid_t job_pid, int job_id)
 
 JobsList::JobEntry::~JobEntry()
 {
-  //delete m_command;
+  // delete m_command;
 }
 
 Command *JobsList::JobEntry::getCommand()
@@ -1156,12 +1158,14 @@ JobsList::JobEntry *JobsList::getJobById(int jobId)
 
 void JobsList::removeJobById(int jobId)
 {
-  for (std::list<JobEntry>::iterator it = getList().begin(); it != getList().end(); ++it)
+  // std::cout << jobId << "\n";
+  auto jobsList = getList();
+  for (std::list<JobEntry>::iterator it = jobsList.begin(); it != getList().end(); ++it)
   {
     if ((*it).getJobID() == jobId)
     {
       delete (*it).getCommand();
-      getList().erase(it);
+      jobsList.erase(it);
       break;
     }
   }
@@ -1201,6 +1205,7 @@ void SmallShell::executeCommand(const char *cmd_line)
   {
     try
     {
+      m_background_jobs.removeFinishedJobs();
       cmd->execute();
     }
     catch (const std::exception &e)
@@ -1212,6 +1217,7 @@ void SmallShell::executeCommand(const char *cmd_line)
       delete cmd;
     }
   }
+  setCurrForegroundPID(-1);
 }
 
 // * SmallShell Private
