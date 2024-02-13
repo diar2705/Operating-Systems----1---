@@ -929,8 +929,8 @@ void ForegroundCommand::execute()
   }
   pid_t pid = job->getJobPid();
   SmallShell::getInstance().setCurrForegroundPID(pid);
-  std::cout << job->getCommand()->getCMDLine() << " " << pid << "\n";
-  job->getCommand()->setGround(GroundType::Foreground);
+  std::cout << job->getCMDLine() << " " << pid << "\n";
+  // job->getCommand()->setGround(GroundType::Foreground);
   jobslist.removeJobById(m_id);
   if (waitpid(pid, nullptr, WUNTRACED) != 0) // options == 0 will wait for the process to finish
   {
@@ -995,7 +995,7 @@ KillCommand::KillCommand(const char *cmd_line)
   {
     // should remove the - before the signal number before std::stoi
     m_signal_number = std::stoi(getArgs().front()); // kill -9 3 this will give -9 (int)
-    m_signal_number = -m_signal_number; // this will make the -9 to 9
+    m_signal_number = -m_signal_number;             // this will make the -9 to 9
 
     m_job_id = std::stoi(getArgs().back());
   }
@@ -1040,8 +1040,8 @@ void KillCommand::execute()
  */
 
 /* The JobEntry class methods */
-JobsList::JobEntry::JobEntry(Command *command, pid_t job_pid, int job_id)
-    : m_command(command),
+JobsList::JobEntry::JobEntry(const std::string& cmd, pid_t job_pid, int job_id)
+    : m_command(cmd),
       m_job_pid(job_pid),
       m_job_id(job_id)
 {
@@ -1049,10 +1049,10 @@ JobsList::JobEntry::JobEntry(Command *command, pid_t job_pid, int job_id)
 
 JobsList::JobEntry::~JobEntry()
 {
-  delete m_command;
+
 }
 
-Command *JobsList::JobEntry::getCommand()
+const std::string &JobsList::JobEntry::getCMDLine()
 {
   return m_command;
 }
@@ -1088,7 +1088,7 @@ void JobsList::addJob(Command *cmd, pid_t pid)
 {
   if (cmd && waitpid(pid, nullptr, WNOHANG) != -1)
   {
-    m_jobs.emplace_back(cmd, pid, (m_jobs.size() ? getLastJob()->getJobID() + 1 : 1));
+    m_jobs.push_back(JobEntry(cmd->getCMDLine(), pid, (m_jobs.size() ? getLastJob()->getJobID() + 1 : 1)));
   }
 }
 
@@ -1096,7 +1096,7 @@ void JobsList::printJobsList()
 {
   for (JobsList::JobEntry &job : m_jobs)
   {
-    std::cout << "[" << job.getJobID() << "] " << job.getCommand()->getCMDLine() << "\n";
+    std::cout << "[" << job.getJobID() << "] " << job.getCMDLine() << "\n";
   }
 }
 
@@ -1104,10 +1104,8 @@ void JobsList::killAllJobs()
 {
   for (JobsList::JobEntry &job : m_jobs)
   {
-    if (job.getCommand())
-    {
-      std::cout << job.getJobPid() << ": " << job.getCommand()->getCMDLine() << "\n";
-    }
+    std::cout << job.getJobPid() << ": " << job.getCMDLine() << "\n";
+
     if (kill(job.getJobPid(), SIGKILL) != 0) // failure
     {
       perror("smash error: kill failed");
@@ -1122,6 +1120,7 @@ void JobsList::removeFinishedJobs()
 
   for (JobsList::JobEntry &job : m_jobs)
   {
+    // TODO what happens when its zombie?
     if (waitpid(job.getJobPid(), nullptr, WNOHANG) > 0)
     {
       ids.push_back(job.getJobID());
@@ -1200,10 +1199,7 @@ void SmallShell::executeCommand(const char *cmd_line)
     {
       // std::cerr << e.what() << '\n';
     }
-    if (!cmd->isBackground())
-    {
-      delete cmd;
-    }
+    delete cmd;
   }
   setCurrForegroundPID(-1);
 }
