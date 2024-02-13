@@ -161,6 +161,13 @@ void ExternalCommand::execute()
 
   pid_t pid = fork();
 
+  if (pid == -1)
+  {
+    perror("smash error: fork failed");
+    return;
+  }
+  
+
   if (pid == 0) // * son
   {
     if (setpgrp() == -1) // failure
@@ -924,6 +931,7 @@ void ForegroundCommand::execute()
   pid_t pid = job->getJobPid();
   SmallShell::getInstance().setCurrForegroundPID(pid);
   std::cout << job->getCommand()->getCMDLine() << " " << pid << "\n";
+  job->getCommand()->setGround(GroundType::Foreground);
   jobslist.removeJobById(m_id);
   if (waitpid(pid, nullptr, WUNTRACED) != 0) // options == 0 will wait for the process to finish
   {
@@ -1051,7 +1059,7 @@ JobsList::JobEntry::JobEntry(Command *command, pid_t job_pid, int job_id)
 
 JobsList::JobEntry::~JobEntry()
 {
-  // delete m_command;
+  delete m_command;
 }
 
 Command *JobsList::JobEntry::getCommand()
@@ -1095,17 +1103,17 @@ void JobsList::addJob(Command *cmd, pid_t pid)
 {
   if (cmd && waitpid(pid, nullptr, WNOHANG) != -1)
   {
-    getList().push_back(JobEntry(
+    m_jobs.emplace_back(
         cmd,
         pid,
-        getList().size() ? getLastJob()->getJobID() + 1 : 1 // if there is jobs (size is true) get the last job then add 1, else give it 1 as a job id
-        ));
+        m_jobs.size() ? getLastJob()->getJobID() + 1 : 1 // if there is jobs (size is true) get the last job then add 1, else give it 1 as a job id
+        );
   }
 }
 
 void JobsList::printJobsList()
 {
-  for (auto &job : getList())
+  for (auto &job : m_jobs)
   {
     std::cout << "[" << job.getJobID() << "] " << job.getCommand()->getCMDLine() << "\n";
   }
@@ -1113,7 +1121,7 @@ void JobsList::printJobsList()
 
 void JobsList::killAllJobs()
 {
-  for (auto &job : getList())
+  for (auto &job : m_jobs)
   {
     std::cout << job.getJobPid() << ": " << job.getCommand()->getCMDLine() << "\n";
     if (kill(job.getJobPid(), SIGKILL) != 0) // failure
@@ -1121,16 +1129,17 @@ void JobsList::killAllJobs()
       perror("smash error: kill failed");
       return;
     }
-    delete job.getCommand();
+    //delete job.getCommand();
+    
   }
-  getList().clear();
+  m_jobs.clear();
 }
 
 void JobsList::removeFinishedJobs()
 {
   std::vector<int> ids;
 
-  for (auto &job : getList())
+  for (auto &job : m_jobs)
   {
     if (waitpid(job.getJobPid(), nullptr, WNOHANG) > 0)
     {
@@ -1146,7 +1155,7 @@ void JobsList::removeFinishedJobs()
 
 JobsList::JobEntry *JobsList::getJobById(int jobId)
 {
-  for (auto &job : getList())
+  for (auto &job : m_jobs)
   {
     if (job.getJobID() == jobId)
     {
@@ -1158,22 +1167,22 @@ JobsList::JobEntry *JobsList::getJobById(int jobId)
 
 void JobsList::removeJobById(int jobId)
 {
-  // std::cout << jobId << "\n";
-  auto jobsList = getList();
-  for (std::list<JobEntry>::iterator it = jobsList.begin(); it != getList().end(); ++it)
+  std::cout << jobId << "\n";
+  for (std::list<JobEntry>::iterator it = m_jobs.begin(); it != m_jobs.end(); ++it)
   {
     if ((*it).getJobID() == jobId)
     {
-      delete (*it).getCommand();
-      jobsList.erase(it);
-      break;
+
+      //delete (*it).getCommand();
+      m_jobs.erase(it);
+      return;
     }
   }
 }
 
 JobsList::JobEntry *JobsList::getLastJob()
 {
-  return getList().size() ? &getList().back() : nullptr;
+  return m_jobs.size() ? &m_jobs.back() : nullptr;
 }
 
 /* *
@@ -1232,7 +1241,7 @@ SmallShell::SmallShell()
 JobsList &SmallShell::getJobsList()
 {
   // update the list before any operation on it
-  m_background_jobs.removeFinishedJobs();
+  //m_background_jobs.removeFinishedJobs();
   // return the updated list
   return m_background_jobs;
 }

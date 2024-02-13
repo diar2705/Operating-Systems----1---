@@ -11,7 +11,7 @@ void ctrlCHandler(int sig_num)
   SmallShell &smash = SmallShell::getInstance();
   if (smash.getCuttForegroundPID() != -1)
   {
-    if (kill(smash.getCuttForegroundPID(), SIGINT) != 0)
+    if (kill(smash.getCuttForegroundPID(), SIGKILL) != 0)
     {
       perror("smash error: kill failed");
       return;
