@@ -166,7 +166,6 @@ void ExternalCommand::execute()
     perror("smash error: fork failed");
     return;
   }
-  
 
   if (pid == 0) // * son
   {
@@ -201,7 +200,7 @@ void ExternalCommand::execute()
 
       if (execvp(args[0], args) == -1)
       {
-        perror("smash error: setpgrp failed");
+        perror("smash error: execvp failed");
         for (int i = 0; i <= COMMAND_MAX_ARGS; i++)
         {
           if (args[i] != nullptr)
@@ -876,7 +875,7 @@ ForegroundCommand::ForegroundCommand(const char *cmd_line)
   {
     throw std::logic_error("ForegroundCommand::ForegroundCommand");
   }
-  auto jobslist = SmallShell::getInstance().getJobsList();
+  JobsList &jobslist = SmallShell::getInstance().getJobsList();
 
   if (getArgs().size() == 0 && jobslist.size() == 0)
   {
@@ -921,7 +920,7 @@ ForegroundCommand::~ForegroundCommand()
 
 void ForegroundCommand::execute()
 {
-  auto jobslist = SmallShell::getInstance().getJobsList();
+  JobsList &jobslist = SmallShell::getInstance().getJobsList();
   JobsList::JobEntry *job = jobslist.getJobById(m_id);
   if (!job)
   {
@@ -962,7 +961,7 @@ void QuitCommand::execute()
   {
     if (getArgs().front() == "kill")
     {
-      JobsList jobs = SmallShell::getInstance().getJobsList();
+      JobsList &jobs = SmallShell::getInstance().getJobsList();
       std::cout << "smash: sending SIGKILL signal to " << jobs.size() << " jobs:\n";
       if (jobs.size() > 0)
       {
@@ -995,18 +994,9 @@ KillCommand::KillCommand(const char *cmd_line)
   try
   {
     // should remove the - before the signal number before std::stoi
-    std::string signal_string = getArgs().front();
-    if (!signal_string.empty() && signal_string.front() == '-')
-    {
-      signal_string.erase(0, 1); // Erase the first character
-    }
-    else // signal didn't have a dash before it
-    {
-      std::cerr << "smash error: kill: invalid arguments\n";
-      throw std::logic_error("KillCommand::KillCommand");
-    }
+    m_signal_number = std::stoi(getArgs().front()); // kill -9 3 this will give -9 (int)
+    m_signal_number = -m_signal_number; // this will make the -9 to 9
 
-    m_signal_number = std::stoi(signal_string);
     m_job_id = std::stoi(getArgs().back());
   }
   catch (const std::exception &e)
@@ -1032,14 +1022,14 @@ void KillCommand::execute()
 {
   JobsList &job_list = SmallShell::getInstance().getJobsList();
   JobsList::JobEntry *job = job_list.getJobById(m_job_id);
-  if (job != nullptr)
+  if (job != nullptr) // job exists
   {
     if (kill(job->getJobPid(), m_signal_number) != 0) // failure
     {
       perror("smash error: kill failed");
       return;
     }
-    
+
     std::cout << "signal number " << m_signal_number << " was sent to pid " << job->getJobPid() << "\n";
     job_list.removeJobById(job->getJobID());
   }
@@ -1083,11 +1073,6 @@ int JobsList::size() const
   return m_jobs.size();
 }
 
-std::list<JobsList::JobEntry> &JobsList::getList()
-{
-  return m_jobs;
-}
-
 JobsList::JobsList()
 {
   // default
@@ -1103,17 +1088,13 @@ void JobsList::addJob(Command *cmd, pid_t pid)
 {
   if (cmd && waitpid(pid, nullptr, WNOHANG) != -1)
   {
-    m_jobs.emplace_back(
-        cmd,
-        pid,
-        m_jobs.size() ? getLastJob()->getJobID() + 1 : 1 // if there is jobs (size is true) get the last job then add 1, else give it 1 as a job id
-        );
+    m_jobs.emplace_back(cmd, pid, (m_jobs.size() ? getLastJob()->getJobID() + 1 : 1));
   }
 }
 
 void JobsList::printJobsList()
 {
-  for (auto &job : m_jobs)
+  for (JobsList::JobEntry &job : m_jobs)
   {
     std::cout << "[" << job.getJobID() << "] " << job.getCommand()->getCMDLine() << "\n";
   }
@@ -1121,16 +1102,16 @@ void JobsList::printJobsList()
 
 void JobsList::killAllJobs()
 {
-  for (auto &job : m_jobs)
+  for (JobsList::JobEntry &job : m_jobs)
   {
-    std::cout << job.getJobPid() << ": " << job.getCommand()->getCMDLine() << "\n";
+    if (job.getCommand())
+    {
+      std::cout << job.getJobPid() << ": " << job.getCommand()->getCMDLine() << "\n";
+    }
     if (kill(job.getJobPid(), SIGKILL) != 0) // failure
     {
       perror("smash error: kill failed");
-      return;
     }
-    //delete job.getCommand();
-    
   }
   m_jobs.clear();
 }
@@ -1139,7 +1120,7 @@ void JobsList::removeFinishedJobs()
 {
   std::vector<int> ids;
 
-  for (auto &job : m_jobs)
+  for (JobsList::JobEntry &job : m_jobs)
   {
     if (waitpid(job.getJobPid(), nullptr, WNOHANG) > 0)
     {
@@ -1155,7 +1136,7 @@ void JobsList::removeFinishedJobs()
 
 JobsList::JobEntry *JobsList::getJobById(int jobId)
 {
-  for (auto &job : m_jobs)
+  for (JobsList::JobEntry &job : m_jobs)
   {
     if (job.getJobID() == jobId)
     {
@@ -1167,13 +1148,10 @@ JobsList::JobEntry *JobsList::getJobById(int jobId)
 
 void JobsList::removeJobById(int jobId)
 {
-  std::cout << jobId << "\n";
-  for (std::list<JobEntry>::iterator it = m_jobs.begin(); it != m_jobs.end(); ++it)
+  for (std::vector<JobEntry>::iterator it = m_jobs.begin(); it != m_jobs.end(); ++it)
   {
     if ((*it).getJobID() == jobId)
     {
-
-      //delete (*it).getCommand();
       m_jobs.erase(it);
       return;
     }
@@ -1209,12 +1187,13 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
 
 void SmallShell::executeCommand(const char *cmd_line)
 {
+
   Command *cmd = CreateCommand(cmd_line);
+  m_background_jobs.removeFinishedJobs();
   if (cmd)
   {
     try
     {
-      m_background_jobs.removeFinishedJobs();
       cmd->execute();
     }
     catch (const std::exception &e)
@@ -1240,9 +1219,6 @@ SmallShell::SmallShell()
 
 JobsList &SmallShell::getJobsList()
 {
-  // update the list before any operation on it
-  //m_background_jobs.removeFinishedJobs();
-  // return the updated list
   return m_background_jobs;
 }
 

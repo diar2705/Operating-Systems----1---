@@ -327,8 +327,6 @@ public:
 
   /* methods */
   int size() const;
-  std::list<JobEntry> &getList();
-
   JobsList();
   ~JobsList();
   void addJob(Command *cmd, pid_t pid);
@@ -341,7 +339,7 @@ public:
 
 private:
   /* variables */
-  std::list<JobEntry> m_jobs;
+  std::vector<JobEntry> m_jobs;
 };
 
 /* *
@@ -371,7 +369,7 @@ public:
   const std::string &getPrompt() const;
   void setPrompt(const std::string &newPrompt);
 
-  const pid_t getCuttForegroundPID() const
+  const pid_t getCurrForegroundPID() const
   {
     return m_currForegroundPID;
   }
