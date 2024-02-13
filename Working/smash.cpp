@@ -26,13 +26,13 @@ int main(int argc, char *argv[])
 
     // get the smash singleton instance locally
     SmallShell &smash = SmallShell::getInstance();
+    std::string cmd_line;
     // run an infinite loop for reading the next command for execution
     while (true)
     {
         // get the current prompt for the smash
         std::cout << smash.getPrompt() << "> ";
         // take in the command from the terminal
-        std::string cmd_line;
         std::getline(std::cin, cmd_line);
         // execute the command
         smash.executeCommand(cmd_line.c_str());

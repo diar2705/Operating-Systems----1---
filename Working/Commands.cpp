@@ -179,6 +179,8 @@ void ExternalCommand::execute()
         perror("smash error: execlp failed");
         return;
       }
+
+      delete command_line;
     }
     else
     {
@@ -197,6 +199,12 @@ void ExternalCommand::execute()
         perror("smash error: setpgrp failed");
         return;
       }
+      for (int i = 0; i <= COMMAND_MAX_ARGS; i++)
+      {
+        delete args[i];
+      }
+      delete args;
+      delete trimmed_cmd_line;
     }
   }
   else // * parent
@@ -232,7 +240,7 @@ bool _is_redirection_command(const char *cmd_line)
     std::string s(cmd_line);
     // if no > were found, return false
     int index_first = s.find_first_of(">");
-    //std::cout << "index is " << index_first << "\n";
+    // std::cout << "index is " << index_first << "\n";
     if (index_first == -1)
     {
       return false;
@@ -481,6 +489,7 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
   if (pipe(files) == -1)
   {
     perror("smash error: pipe failed");
+    delete files;
     return;
   }
 
@@ -492,11 +501,13 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
     if (original_write == -1)
     {
       perror("smash error: dup failed");
+      delete files;
       return;
     }
     if (dup2(files[PIPE::WRITE], STANDARD::OUT))
     {
       perror("smash error: dup2 failed");
+      delete files;
       return;
     }
   }
@@ -506,11 +517,13 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
     if (original_write == -1)
     {
       perror("smash error: dup failed");
+      delete files;
       return;
     }
     if (dup2(files[PIPE::WRITE], STANDARD::ERR))
     {
       perror("smash error: dup2 failed");
+      delete files;
       return;
     }
   }
@@ -522,6 +535,7 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
   if (dup2(original_write, files[PIPE::WRITE]))
   {
     perror("smash error: dup2 failed");
+    delete files;
     return;
   }
 
@@ -530,11 +544,13 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
   if (original_read == -1)
   {
     perror("smash error: dup failed");
+    delete files;
     return;
   }
   if (dup2(files[PIPE::READ], STANDARD::IN))
   {
     perror("smash error: dup2 failed");
+    delete files;
     return;
   }
 
@@ -545,8 +561,10 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
   if (dup2(original_read, files[PIPE::READ]))
   {
     perror("smash error: dup2 failed");
+    delete files;
     return;
   }
+  delete files;
 }
 
 // * Special Commands 3 (ChmodCommand) , actually inherits from BuiltInCommand
@@ -716,6 +734,7 @@ void GetCurrDirCommand::execute()
     // ? should we print an error
     perror("smash error: getcwd failed");
   }
+  delete path;
 }
 
 // * BuiltInCommand 4 (ChangeDirCommand)
@@ -753,6 +772,7 @@ void ChangeDirCommand::execute()
   if (getcwd(cwd, COMMAND_MAX_PATH_LENGTH + 1) == nullptr) // failure
   {
     perror("smash error: getcwd failed");
+    delete cwd;
     return;
   }
   std::string curr_dir(cwd);
@@ -763,6 +783,7 @@ void ChangeDirCommand::execute()
     if (CD_PATH_HISTORY.size() == 0)
     {
       std::cerr << "smash error: cd: OLDPWD not set\n";
+      delete cwd;
       return;
     }
     else
@@ -776,6 +797,7 @@ void ChangeDirCommand::execute()
       else
       {
         perror("smash error: chdir failed");
+        delete cwd;
         return;
       }
     }
@@ -792,6 +814,7 @@ void ChangeDirCommand::execute()
     else
     {
       perror("smash error: chdir failed");
+      delete cwd;
       return;
     }
   }
@@ -805,9 +828,11 @@ void ChangeDirCommand::execute()
     else
     {
       perror("smash error: chdir failed");
+      delete cwd;
       return;
     }
   }
+  delete cwd;
 }
 
 /* methods */
@@ -949,7 +974,7 @@ void QuitCommand::execute()
     {
       JobsList jobs = SmallShell::getInstance().getJobsList();
       std::cout << "smash: sending SIGKILL signal to " << jobs.size() << " jobs:\n";
-      if(jobs.size() > 0)
+      if (jobs.size() > 0)
       {
         jobs.killAllJobs();
       }
@@ -1016,7 +1041,7 @@ KillCommand::~KillCommand()
 void KillCommand::execute()
 {
   JobsList &job_list = SmallShell::getInstance().getJobsList();
-  JobsList::JobEntry* job = job_list.getJobById(m_job_id);
+  JobsList::JobEntry *job = job_list.getJobById(m_job_id);
   if (job != nullptr)
   {
     if (kill(job->getJobPid(), m_signal_number) != 0) // failure
@@ -1024,7 +1049,7 @@ void KillCommand::execute()
       perror("smash error: kill failed");
       return;
     }
-    std::cout << "signal number "<< m_signal_number <<" was sent to pid " << job->getJobPid() << "\n";
+    std::cout << "signal number " << m_signal_number << " was sent to pid " << job->getJobPid() << "\n";
   }
 }
 
@@ -1112,6 +1137,7 @@ void JobsList::killAllJobs()
       perror("smash error: kill failed");
       return;
     }
+    delete job.getCommand();
   }
   getList().clear();
 }
@@ -1120,18 +1146,18 @@ void JobsList::removeFinishedJobs()
 {
   std::vector<int> ids;
 
-    for (auto &job : getList()){
-      if (waitpid(job.getJobPid(), nullptr, WNOHANG) > 0)
-      {
-        ids.push_back(job.getJobID());
-      }
-    }
-
-    for (int id : ids) 
+  for (auto &job : getList())
+  {
+    if (waitpid(job.getJobPid(), nullptr, WNOHANG) > 0)
     {
-      removeJobById(id);
+      ids.push_back(job.getJobID());
     }
-    
+  }
+
+  for (int id : ids)
+  {
+    removeJobById(id);
+  }
 }
 
 JobsList::JobEntry *JobsList::getJobById(int jobId)
@@ -1152,6 +1178,7 @@ void JobsList::removeJobById(int jobId)
   {
     if ((*it).getJobID() == jobId)
     {
+      delete (*it).getCommand();
       getList().erase(it);
       break;
     }
@@ -1162,8 +1189,6 @@ JobsList::JobEntry *JobsList::getLastJob()
 {
   return getList().size() ? &getList().back() : nullptr;
 }
-
-
 
 /* *
  * The Small Shell class
@@ -1198,9 +1223,9 @@ void SmallShell::executeCommand(const char *cmd_line)
     }
     catch (const std::exception &e)
     {
-      //std::cerr << e.what() << '\n';
+      // std::cerr << e.what() << '\n';
     }
-    if(!cmd->isBackground())
+    if (!cmd->isBackground())
     {
       delete cmd;
     }
@@ -1237,7 +1262,7 @@ void SmallShell::setPrompt(const std::string &newPrompt)
 
 Command *SmallShell::CreateCommand_aux(const char *cmd_line)
 {
-  if(*cmd_line == '\0')
+  if (*cmd_line == '\0')
   {
     return nullptr;
   }
@@ -1247,7 +1272,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   try
@@ -1256,7 +1281,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   try
@@ -1265,7 +1290,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   try
@@ -1274,7 +1299,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   try
@@ -1283,7 +1308,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   try
@@ -1292,7 +1317,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   try
@@ -1301,7 +1326,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   try
@@ -1310,7 +1335,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   try
@@ -1319,7 +1344,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   try
@@ -1328,7 +1353,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   try
@@ -1337,7 +1362,7 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    //std::cout << e.what() << '\n';
+    // std::cout << e.what() << '\n';
   }
 
   return nullptr;
