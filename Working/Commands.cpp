@@ -993,22 +993,20 @@ KillCommand::KillCommand(const char *cmd_line)
 
   try
   {
+    m_job_id = std::stoi(getArgs().back());
+    // check if the job id actually exists
+    if (SmallShell::getInstance().getJobsList().getJobById(m_job_id) == nullptr)
+    {
+      std::cerr << "smash error: kill: job-id " << m_job_id << " does not exist\n";
+      throw std::logic_error("KillCommand::KillCommand");
+    }
     // should remove the - before the signal number before std::stoi
     m_signal_number = std::stoi(getArgs().front()); // kill -9 3 this will give -9 (int)
     m_signal_number = -m_signal_number;             // this will make the -9 to 9
-
-    m_job_id = std::stoi(getArgs().back());
   }
   catch (const std::exception &e)
   {
     std::cerr << "smash error: kill: invalid arguments\n";
-    throw std::logic_error("KillCommand::KillCommand");
-  }
-
-  // check if the job id actually exists
-  if (SmallShell::getInstance().getJobsList().getJobById(m_job_id) == nullptr)
-  {
-    std::cerr << "smash error: kill: job-id " << m_job_id << " does not exist\n";
     throw std::logic_error("KillCommand::KillCommand");
   }
 }
