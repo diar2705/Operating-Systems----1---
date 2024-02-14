@@ -333,86 +333,6 @@ void RedirectionCommand::execute()
   close(dupped_fd);
 }
 
-/*void RedirectionCommand::execute()
-{
-  // this command will not be tested with &
-  {
-    IN = 0,
-    OUT = 1,
-  };
-  enum STANDARD
-
-  int original_stdout = dup(STANDARD::OUT); // ? should we use STDOUT_FILENO
-  if (original_stdout == -1)
-  {
-    perror("smash error: dup failed");
-    return;
-    // exit(EXIT_FAILURE);
-  }
-  // close the original fd for standard output
-  if (close(STANDARD::OUT))
-  {
-    perror("smash error: close failed");
-    return;
-  }
-
-  if (m_redirection_type == RedirectionType::Override)
-  {
-    // open a new/existing file for overriding (its fd will be 1)
-    // O_WRONLY: Open for writing only.
-    // O_CREAT: Create file if it does not exist.
-    // O_TRUNC: Truncate size to 0.
-    // 0644: File permission bits (user: read+write, group: read, others: read).
-    int file_d = open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (file_d == -1)
-    {
-      perror("smash error: open failed");
-      if (dup2(original_stdout, STANDARD::OUT) == -1)
-      {
-        perror("smash  error: dup2 failed");
-        return;
-      }
-      return;
-    }
-    else if (file_d != STANDARD::OUT)
-    {
-      std::cout << "sadasda\n";
-    }
-  }
-  else // (m_redirection_type == RedirectionType::Append)
-  {
-    // open a new/existing file for appending (its fd will be 1)
-    // O_WRONLY: Open for writing only.
-    // O_CREAT: Create file if it does not exist.
-    // O_APPEND: Append data at the end of the file.
-    // 0644: File permission bits (user: read+write, group: read, others: read).
-    if (open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0666) == -1)
-    {
-      perror("smash error: open failed");
-      if (dup2(original_stdout, STANDARD::OUT) == -1)
-      {
-        perror("smash  error: dup2 failed");
-        return;
-      }
-      return;
-    }
-  }
-
-  // execute command
-  SmallShell::getInstance().executeCommand(m_command.c_str());
-
-  // Restore the original stdout
-  if (dup2(original_stdout, STANDARD::OUT) == -1)
-  {
-    perror("smash  error: dup2 failed");
-    return;
-  }
-
-
-  // program returned to the original state where stdout in the standard output stream.
-}
-*/
-
 // * Special Commands 2 (PipeCommand)
 
 bool _is_pipe_command(const char *cmd_line)
@@ -457,15 +377,15 @@ std::string PipeCommand::_get_cmd_2(const char *cmd_line)
 {
 
   std::string s(cmd_line);
-  unsigned int index_of_line = s.find_first_of("|");
-  unsigned int index_of_amp = s.find_first_of("&");
+  int index_of_line = s.find_first_of("|");
+  int index_of_amp = s.find_first_of("&");
 
-  if (index_of_amp != std::string::npos)
+  if (index_of_amp != -1)
   {
     return s.substr(index_of_amp + 1, s.size() - index_of_amp);
   }
   std::string cmd2 = s.substr(index_of_line + 1, s.size() - index_of_line);
-  std::cout << "cmd 2 " << cmd2 << "\n";
+  //std::cout << "cmd 2 " << cmd2 << "\n";
   return cmd2;
 }
 
@@ -486,7 +406,6 @@ PipeCommand::PipeCommand(const char *cmd_line)
   {
     throw std::logic_error("wrong name");
   }
-  std::cout << m_cmd_2 << "\n";
 }
 
 PipeCommand::~PipeCommand()
@@ -575,81 +494,17 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
   }
   else
   {
-    if (waitpid(pid2, nullptr, WUNTRACED) == -1)
+    if (waitpid(pid2, nullptr, WUNTRACED) > 0)
+    {
+      close(files[0]);
+      close(files[1]);
+    }
+    else
     {
       perror("smash error: waitpid failed");
       return;
     }
   }
-
-  close(files[0]);
-  close(files[1]);
-
-  /*
-
-    // change the write file from stdout/err
-    int original_write = -1;
-    if (m_pipe_type == PipeType::Standard) // we have to close/dup 1
-    {
-      original_write = dup(STANDARD::OUT); // stdout
-      if (original_write == -1)
-      {
-        perror("smash error: dup failed");
-        return;
-      }
-      if (dup2(files[PIPE::WRITE], STANDARD::OUT))
-      {
-        perror("smash error: dup2 failed");
-        return;
-      }
-    }
-    else // close/dup 2
-    {
-      original_write = dup(STANDARD::ERR); // stderr
-      if (original_write == -1)
-      {
-        perror("smash error: dup failed");
-        return;
-      }
-      if (dup2(files[PIPE::WRITE], STANDARD::ERR))
-      {
-        perror("smash error: dup2 failed");
-        return;
-      }
-    }
-
-    // execute the first command
-    SmallShell::getInstance().executeCommand(m_cmd_1);
-
-    // return back the original write stream
-    if (dup2(original_write, files[PIPE::WRITE]))
-    {
-      perror("smash error: dup2 failed");
-      return;
-    }
-
-    // change the read file from stdin
-    int original_read = dup(STANDARD::IN); // stdin
-    if (original_read == -1)
-    {
-      perror("smash error: dup failed");
-      return;
-    }
-    if (dup2(files[PIPE::READ], STANDARD::IN))
-    {
-      perror("smash error: dup2 failed");
-      return;
-    }
-
-    // execute the second command
-    SmallShell::getInstance().executeCommand(m_cmd_2);
-
-    // return back the original read stream
-    if (dup2(original_read, files[PIPE::READ]))
-    {
-      perror("smash error: dup2 failed");
-      return;
-    }*/
 }
 
 // * Special Commands 3 (ChmodCommand) , actually inherits from BuiltInCommand
