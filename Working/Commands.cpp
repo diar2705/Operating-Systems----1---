@@ -333,6 +333,86 @@ void RedirectionCommand::execute()
   close(dupped_fd);
 }
 
+/*void RedirectionCommand::execute()
+{
+  // this command will not be tested with &
+  {
+    IN = 0,
+    OUT = 1,
+  };
+  enum STANDARD
+
+  int original_stdout = dup(STANDARD::OUT); // ? should we use STDOUT_FILENO
+  if (original_stdout == -1)
+  {
+    perror("smash error: dup failed");
+    return;
+    // exit(EXIT_FAILURE);
+  }
+  // close the original fd for standard output
+  if (close(STANDARD::OUT))
+  {
+    perror("smash error: close failed");
+    return;
+  }
+
+  if (m_redirection_type == RedirectionType::Override)
+  {
+    // open a new/existing file for overriding (its fd will be 1)
+    // O_WRONLY: Open for writing only.
+    // O_CREAT: Create file if it does not exist.
+    // O_TRUNC: Truncate size to 0.
+    // 0644: File permission bits (user: read+write, group: read, others: read).
+    int file_d = open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (file_d == -1)
+    {
+      perror("smash error: open failed");
+      if (dup2(original_stdout, STANDARD::OUT) == -1)
+      {
+        perror("smash  error: dup2 failed");
+        return;
+      }
+      return;
+    }
+    else if (file_d != STANDARD::OUT)
+    {
+      std::cout << "sadasda\n";
+    }
+  }
+  else // (m_redirection_type == RedirectionType::Append)
+  {
+    // open a new/existing file for appending (its fd will be 1)
+    // O_WRONLY: Open for writing only.
+    // O_CREAT: Create file if it does not exist.
+    // O_APPEND: Append data at the end of the file.
+    // 0644: File permission bits (user: read+write, group: read, others: read).
+    if (open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0666) == -1)
+    {
+      perror("smash error: open failed");
+      if (dup2(original_stdout, STANDARD::OUT) == -1)
+      {
+        perror("smash  error: dup2 failed");
+        return;
+      }
+      return;
+    }
+  }
+
+  // execute command
+  SmallShell::getInstance().executeCommand(m_command.c_str());
+
+  // Restore the original stdout
+  if (dup2(original_stdout, STANDARD::OUT) == -1)
+  {
+    perror("smash  error: dup2 failed");
+    return;
+  }
+
+
+  // program returned to the original state where stdout in the standard output stream.
+}
+*/
+
 // * Special Commands 2 (PipeCommand)
 
 bool _is_pipe_command(const char *cmd_line)
@@ -385,7 +465,6 @@ std::string PipeCommand::_get_cmd_2(const char *cmd_line)
     return s.substr(index_of_amp + 1, s.size() - index_of_amp);
   }
   std::string cmd2 = s.substr(index_of_line + 1, s.size() - index_of_line);
-  //std::cout << "cmd 2 " << cmd2 << "\n";
   return cmd2;
 }
 
@@ -412,7 +491,7 @@ PipeCommand::~PipeCommand()
 {
 }
 
-void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could get full, i think we need fork
+void PipeCommand::execute()
 {
   // this command will not be tested with &
   enum PIPE
@@ -454,20 +533,27 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
     setpgrp();
     if (m_pipe_type == PipeType::Standard)
     {
-      dup2(files[1], STDOUT_FILENO);
+      dup2(files[1], 1);
     }
     else //(m_pipe_type == PipeType::Error)
     {
-      dup2(files[1], STDERR_FILENO);
+      dup2(files[1], 2);
     }
-
+    smash.executeCommand(m_cmd_1.c_str());
     close(files[0]);
     close(files[1]);
-    smash.executeCommand(m_cmd_1.c_str());
     exit(0);
   }
   else
   {
+    if (m_pipe_type == PipeType::Standard)
+    {
+      dup2(1, files[1]);
+    }
+    else //(m_pipe_type == PipeType::Error)
+    {
+      dup2(2, files[1]);
+    }
     if (waitpid(pid1, nullptr, WUNTRACED) == -1)
     {
       perror("smash error: waitpid failed");
@@ -487,23 +573,20 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
   {
     setpgrp();
     dup2(files[0], STDIN_FILENO);
+    smash.executeCommand(m_cmd_2.c_str());
     close(files[0]);
     close(files[1]);
-    smash.executeCommand(m_cmd_2.c_str());
     exit(0);
   }
   else
   {
-    if (waitpid(pid2, nullptr, WUNTRACED) > 0)
-    {
-      close(files[0]);
-      close(files[1]);
-    }
-    else
+    if (waitpid(pid2, nullptr, WUNTRACED) == -1)
     {
       perror("smash error: waitpid failed");
       return;
     }
+    close(files[0]);
+    close(files[1]);
   }
 }
 
