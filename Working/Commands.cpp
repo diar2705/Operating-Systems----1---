@@ -464,7 +464,7 @@ std::string PipeCommand::_get_cmd_2(const char *cmd_line)
   {
     return s.substr(index_of_amp + 1, s.size() - index_of_amp);
   }
-  std::stirng cmd2 = s.substr(index_of_line + 1, s.size() - index_of_line);
+  std::string cmd2 = s.substr(index_of_line + 1, s.size() - index_of_line);
   std::cout << "cmd 2 " << cmd2 << "\n";
   return cmd2;
 }
@@ -486,6 +486,7 @@ PipeCommand::PipeCommand(const char *cmd_line)
   {
     throw std::logic_error("wrong name");
   }
+  std::cout << m_cmd_2 << "\n";
 }
 
 PipeCommand::~PipeCommand()
@@ -787,7 +788,7 @@ ShowPidCommand::~ShowPidCommand()
 void ShowPidCommand::execute()
 {
   // `getpid()` is always successful and does not have an error return.
-  std::cout << "smash pid is " << getpid() << '\n';
+  std::cout << "smash pid is " << getpid() << std::endl;
 }
 
 // * BuiltInCommand 3 (GetCurrDirCommand)
