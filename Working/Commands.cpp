@@ -198,18 +198,18 @@ void ExternalCommand::execute()
 
       _parseCommandLine(_trim(std::string(trimmed_cmd_line)).c_str(), args);
 
-      if (execvp(args[0], args) == -1)
+      if (execvp(args[0], args) == -1) //TODO: this is the problem 
       {
         perror("smash error: execvp failed");
-        for (int i = 0; i <= COMMAND_MAX_ARGS; i++)
-        {
-          if (args[i] != nullptr)
-          {
-            free(args[i]);
-          }
-        }
-        return;
       }
+      for (int i = 0; i <= COMMAND_MAX_ARGS; i++)
+      {
+        if (args[i] != nullptr)
+        {
+          free(args[i]);
+        }
+      }
+      exit(0);
     }
   }
   else // * parent
@@ -1029,7 +1029,7 @@ void KillCommand::execute()
     }
 
     std::cout << "signal number " << m_signal_number << " was sent to pid " << job->getJobPid() << "\n";
-    job_list.removeJobById(job->getJobID());
+    job_list.removeJobById(m_job_id);
   }
 }
 

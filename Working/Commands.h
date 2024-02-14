@@ -282,7 +282,7 @@ class KillCommand : public BuiltInCommand
 {
   /* variables */
   int m_signal_number;
-  unsigned int m_job_id;
+  int m_job_id;
 
 public:
   KillCommand(const char *cmd_line);
