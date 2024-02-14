@@ -198,7 +198,7 @@ void ExternalCommand::execute()
 
       _parseCommandLine(_trim(std::string(trimmed_cmd_line)).c_str(), args);
 
-      if (execvp(args[0], args) == -1) //TODO: this is the problem 
+      if (execvp(args[0], args) == -1)
       {
         perror("smash error: execvp failed");
       }
@@ -225,7 +225,6 @@ void ExternalCommand::execute()
       if (waitpid(m_pid, nullptr, WUNTRACED) == -1)
       {
         perror("smash error: waitpid failed");
-        return;
       }
       SmallShell::getInstance().setCurrForegroundPID(-1);
     }
@@ -275,48 +274,81 @@ RedirectionCommand::RedirectionType RedirectionCommand::get_redirection_type(con
 
 RedirectionCommand::RedirectionCommand(const char *cmd_line)
     : Command(cmd_line),
-      m_command(nullptr),
+      m_command(),
       m_file_path()
 {
   if (!_is_redirection_command(cmd_line))
   {
-    throw std::logic_error("RedirectionCommand::RedirectionCommand.");
+    throw std::logic_error("wrong name");
   }
   m_redirection_type = get_redirection_type(cmd_line);
 
   std::string cmd_str(cmd_line);
-  std::string command_str = _trim(cmd_str.substr(0, cmd_str.find_first_of(">")));
-  m_command = SmallShell::getInstance().CreateCommand(command_str.c_str());
-  if (m_command == nullptr)
-  {
-    throw std::logic_error("RedirectionCommand::RedirectionCommand.");
-  }
+  m_command = _trim(cmd_str.substr(0, cmd_str.find_first_of(">")).c_str());
+
   m_file_path = _trim(cmd_str.substr(cmd_str.find_last_of(">") + 1));
 }
 
 RedirectionCommand::~RedirectionCommand()
 {
-  delete m_command;
 }
 
 void RedirectionCommand::execute()
 {
+  SmallShell &smash = SmallShell::getInstance();
+  int new_fd;
+  int dupped_fd = dup(1);
+  close(1);
+  if (m_redirection_type == RedirectionType::Override)
+  {
+    new_fd = open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0655);
+    if (new_fd == -1)
+    {
+      perror("smash error: open failed"); ////////////
+      dup2(dupped_fd, 1);
+      close(dupped_fd);
+      return;
+    }
+  }
+  else if (m_redirection_type == RedirectionType::Append)
+  {
+    new_fd = open(m_file_path.c_str(), O_RDWR | O_CREAT | O_APPEND, 0655);
+    if (new_fd == -1)
+    {
+      perror("smash error: open failed");
+      dup2(dupped_fd, 1);
+      close(dupped_fd);
+      return;
+    }
+  }
+
+  smash.executeCommand(m_command.c_str());
+
+  if (close(new_fd) == -1)
+  {
+    perror("smash error: close failed");
+    exit(0);
+  }
+  dup2(dupped_fd, 1);
+  close(dupped_fd);
+}
+
+/*void RedirectionCommand::execute()
+{
   // this command will not be tested with &
-  enum STANDARD
   {
     IN = 0,
     OUT = 1,
   };
+  enum STANDARD
 
   int original_stdout = dup(STANDARD::OUT); // ? should we use STDOUT_FILENO
-
   if (original_stdout == -1)
   {
     perror("smash error: dup failed");
     return;
     // exit(EXIT_FAILURE);
   }
-
   // close the original fd for standard output
   if (close(STANDARD::OUT))
   {
@@ -331,10 +363,20 @@ void RedirectionCommand::execute()
     // O_CREAT: Create file if it does not exist.
     // O_TRUNC: Truncate size to 0.
     // 0644: File permission bits (user: read+write, group: read, others: read).
-    if (open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644) == -1)
+    int file_d = open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (file_d == -1)
     {
       perror("smash error: open failed");
+      if (dup2(original_stdout, STANDARD::OUT) == -1)
+      {
+        perror("smash  error: dup2 failed");
+        return;
+      }
       return;
+    }
+    else if (file_d != STANDARD::OUT)
+    {
+      std::cout << "sadasda\n";
     }
   }
   else // (m_redirection_type == RedirectionType::Append)
@@ -344,25 +386,32 @@ void RedirectionCommand::execute()
     // O_CREAT: Create file if it does not exist.
     // O_APPEND: Append data at the end of the file.
     // 0644: File permission bits (user: read+write, group: read, others: read).
-    if (open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644) == -1)
+    if (open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0666) == -1)
     {
       perror("smash error: open failed");
+      if (dup2(original_stdout, STANDARD::OUT) == -1)
+      {
+        perror("smash  error: dup2 failed");
+        return;
+      }
       return;
     }
   }
 
   // execute command
-  m_command->execute();
+  SmallShell::getInstance().executeCommand(m_command.c_str());
 
   // Restore the original stdout
   if (dup2(original_stdout, STANDARD::OUT) == -1)
   {
     perror("smash  error: dup2 failed");
-    exit(EXIT_FAILURE);
+    return;
   }
+
 
   // program returned to the original state where stdout in the standard output stream.
 }
+*/
 
 // * Special Commands 2 (PipeCommand)
 
@@ -394,58 +443,30 @@ PipeCommand::PipeType PipeCommand::_get_pipe_type(const char *cmd_line)
   }
   else
   {
-    throw std::logic_error("PipeCommand::_get_pipe_type");
+    throw std::logic_error("PipeCommand::PipeCommand");
   }
 }
 
-Command *PipeCommand::_get_cmd_1(const char *cmd_line)
+std::string PipeCommand::_get_cmd_1(const char *cmd_line)
 {
   std::string s(cmd_line);
-  unsigned int index_of_line = s.find_first_of("|");
-  if (index_of_line != std::string::npos)
-  {
-    Command *command = SmallShell::getInstance().CreateCommand(s.substr(0, index_of_line).c_str());
-    if (command)
-    {
-      return command;
-    }
-    else
-    {
-      throw std::logic_error("PipeCommand::_get_cmd_1");
-    }
-  }
-  return nullptr;
+  return s.substr(0, s.find_first_of("|"));
 }
 
-Command *PipeCommand::_get_cmd_2(const char *cmd_line)
+std::string PipeCommand::_get_cmd_2(const char *cmd_line)
 {
 
   std::string s(cmd_line);
   unsigned int index_of_line = s.find_first_of("|");
   unsigned int index_of_amp = s.find_first_of("&");
 
-  if (index_of_line != std::string::npos)
+  if (index_of_amp != std::string::npos)
   {
-    Command *command;
-    if (index_of_amp != std::string::npos)
-    {
-      command = SmallShell::getInstance().CreateCommand(s.substr(index_of_amp + 1).c_str());
-    }
-    else
-    {
-      command = SmallShell::getInstance().CreateCommand(s.substr(index_of_line + 1).c_str());
-    }
-
-    if (command)
-    {
-      return command;
-    }
-    else
-    {
-      throw std::logic_error("PipeCommand::_get_cmd_2");
-    }
+    return s.substr(index_of_amp + 1, s.size() - index_of_amp);
   }
-  return nullptr;
+  std::stirng cmd2 = s.substr(index_of_line + 1, s.size() - index_of_line);
+  std::cout << "cmd 2 " << cmd2 << "\n";
+  return cmd2;
 }
 
 PipeCommand::PipeCommand(const char *cmd_line)
@@ -456,21 +477,19 @@ PipeCommand::PipeCommand(const char *cmd_line)
     m_pipe_type = _get_pipe_type(cmd_line);
     m_cmd_1 = _get_cmd_1(cmd_line);
     m_cmd_2 = _get_cmd_2(cmd_line);
-    if (m_cmd_1 == nullptr || m_cmd_2 == nullptr) // no need but will keep for more safety
+    if (m_cmd_1 == "" || m_cmd_2 == "")
     {
       throw std::logic_error("PipeCommand::PipeCommand");
     }
   }
   else
   {
-    throw std::logic_error("PipeCommand::PipeCommand");
+    throw std::logic_error("wrong name");
   }
 }
 
 PipeCommand::~PipeCommand()
 {
-  delete m_cmd_1;
-  delete m_cmd_2;
 }
 
 void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could get full, i think we need fork
@@ -497,69 +516,139 @@ void PipeCommand::execute() //!!!!!!!!!! we nee dto be careful, the pipe could g
     return;
   }
 
-  // change the write file from stdout/err
-  int original_write = -1;
-  if (m_pipe_type == PipeType::Standard) // we have to close/dup 1
+  // smash instance
+  SmallShell &smash = SmallShell::getInstance();
+
+  // fork and execute the first command
+  pid_t pid1 = fork();
+  if (pid1 == -1)
   {
-    original_write = dup(STANDARD::OUT); // stdout
-    if (original_write == -1)
+    perror("smash error: fork failed");
+    close(files[0]);
+    close(files[1]);
+    return;
+  }
+
+  if (pid1 == 0)
+  {
+    setpgrp();
+    if (m_pipe_type == PipeType::Standard)
     {
-      perror("smash error: dup failed");
+      dup2(files[1], STDOUT_FILENO);
+    }
+    else //(m_pipe_type == PipeType::Error)
+    {
+      dup2(files[1], STDERR_FILENO);
+    }
+
+    close(files[0]);
+    close(files[1]);
+    smash.executeCommand(m_cmd_1.c_str());
+    exit(0);
+  }
+  else
+  {
+    if (waitpid(pid1, nullptr, WUNTRACED) == -1)
+    {
+      perror("smash error: waitpid failed");
       return;
     }
-    if (dup2(files[PIPE::WRITE], STANDARD::OUT))
+  }
+
+  // fork and execute the second command
+
+  pid_t pid2 = fork();
+  if (pid2 == -1)
+  {
+    perror("smash error: fork failed");
+  }
+
+  if (pid2 == 0)
+  {
+    setpgrp();
+    dup2(files[0], STDIN_FILENO);
+    close(files[0]);
+    close(files[1]);
+    smash.executeCommand(m_cmd_2.c_str());
+    exit(0);
+  }
+  else
+  {
+    if (waitpid(pid2, nullptr, WUNTRACED) == -1)
+    {
+      perror("smash error: waitpid failed");
+      return;
+    }
+  }
+
+  close(files[0]);
+  close(files[1]);
+
+  /*
+
+    // change the write file from stdout/err
+    int original_write = -1;
+    if (m_pipe_type == PipeType::Standard) // we have to close/dup 1
+    {
+      original_write = dup(STANDARD::OUT); // stdout
+      if (original_write == -1)
+      {
+        perror("smash error: dup failed");
+        return;
+      }
+      if (dup2(files[PIPE::WRITE], STANDARD::OUT))
+      {
+        perror("smash error: dup2 failed");
+        return;
+      }
+    }
+    else // close/dup 2
+    {
+      original_write = dup(STANDARD::ERR); // stderr
+      if (original_write == -1)
+      {
+        perror("smash error: dup failed");
+        return;
+      }
+      if (dup2(files[PIPE::WRITE], STANDARD::ERR))
+      {
+        perror("smash error: dup2 failed");
+        return;
+      }
+    }
+
+    // execute the first command
+    SmallShell::getInstance().executeCommand(m_cmd_1);
+
+    // return back the original write stream
+    if (dup2(original_write, files[PIPE::WRITE]))
     {
       perror("smash error: dup2 failed");
       return;
     }
-  }
-  else // close/dup 2
-  {
-    original_write = dup(STANDARD::ERR); // stderr
-    if (original_write == -1)
+
+    // change the read file from stdin
+    int original_read = dup(STANDARD::IN); // stdin
+    if (original_read == -1)
     {
       perror("smash error: dup failed");
       return;
     }
-    if (dup2(files[PIPE::WRITE], STANDARD::ERR))
+    if (dup2(files[PIPE::READ], STANDARD::IN))
     {
       perror("smash error: dup2 failed");
       return;
     }
-  }
 
-  // execute the first command
-  m_cmd_1->execute();
+    // execute the second command
+    SmallShell::getInstance().executeCommand(m_cmd_2);
 
-  // return back the original write stream
-  if (dup2(original_write, files[PIPE::WRITE]))
-  {
-    perror("smash error: dup2 failed");
-    return;
-  }
-
-  // change the read file from stdin
-  int original_read = dup(STANDARD::IN); // stdin
-  if (original_read == -1)
-  {
-    perror("smash error: dup failed");
-    return;
-  }
-  if (dup2(files[PIPE::READ], STANDARD::IN))
-  {
-    perror("smash error: dup2 failed");
-    return;
-  }
-
-  // execute the second command
-  m_cmd_2->execute();
-
-  // return back the original read stream
-  if (dup2(original_read, files[PIPE::READ]))
-  {
-    perror("smash error: dup2 failed");
-    return;
-  }
+    // return back the original read stream
+    if (dup2(original_read, files[PIPE::READ]))
+    {
+      perror("smash error: dup2 failed");
+      return;
+    }*/
 }
 
 // * Special Commands 3 (ChmodCommand) , actually inherits from BuiltInCommand
@@ -569,7 +658,7 @@ ChmodCommand::ChmodCommand(const char *cmd_line)
 {
   if (getName() != "chmod")
   {
-    throw std::logic_error("ChmodCommand::ChmodCommand");
+    throw std::logic_error("wrong name");
   }
 
   if (getArgs().size() != 2)
@@ -664,7 +753,7 @@ ChangePromptCommand::ChangePromptCommand(const char *cmd_line)
 {
   if (getName() != "chprompt")
   {
-    throw std::logic_error("ChangePromptCommand::ChangePromptCommand");
+    throw std::logic_error("wrong name");
   }
 }
 
@@ -686,7 +775,7 @@ ShowPidCommand::ShowPidCommand(const char *cmd_line)
 {
   if (getName() != "showpid")
   {
-    throw std::logic_error("ShowPidCommand::ShowPidCommand");
+    throw std::logic_error("wrong name");
   }
 }
 
@@ -707,7 +796,7 @@ GetCurrDirCommand::GetCurrDirCommand(const char *cmd_line)
 {
   if (getName() != "pwd")
   {
-    throw std::logic_error("GetCurrDirCommand::GetCurrDirCommand");
+    throw std::logic_error("wrong name");
   }
 }
 
@@ -734,14 +823,14 @@ void GetCurrDirCommand::execute()
 // * BuiltInCommand 4 (ChangeDirCommand)
 
 /* static variables */
-std::list<std::string> ChangeDirCommand::CD_PATH_HISTORY; // default c'tor will be called
+std::string ChangeDirCommand::CD_PATH_HISTORY; // default c'tor will be called
 
 ChangeDirCommand::ChangeDirCommand(const char *cmd_line)
     : BuiltInCommand(cmd_line)
 {
   if (getName() != "cd")
   {
-    throw std::logic_error("ChangeDirCommand::ChangeDirCommand");
+    throw std::logic_error("wrong name");
   }
   // 0 arguments will NOT be tested
   if (getArgs().size() > 1) // more than one argument
@@ -771,25 +860,24 @@ void ChangeDirCommand::execute()
   std::string curr_dir(cwd);
 
   // the ctor guarantees there will be 1 argument only
-  if ("-" == getArgs().back())
+  if ("-" == getArgs().front())
   {
     if (CD_PATH_HISTORY.size() == 0)
     {
       std::cerr << "smash error: cd: OLDPWD not set\n";
-      return;
+      throw std::logic_error("ChangeDirCommand::ChangeDirCommand");
     }
     else
     {
       // CD_PATH_HISTORY has paths in it
-      if (0 == chdir(CD_PATH_HISTORY.back().c_str())) // success
-      {
-        CD_PATH_HISTORY.pop_back();
-        CD_PATH_HISTORY.push_back(curr_dir);
-      }
-      else
+      if (chdir(CD_PATH_HISTORY.c_str()) == -1) // failure
       {
         perror("smash error: chdir failed");
         return;
+      }
+      else
+      {
+        CD_PATH_HISTORY = curr_dir;
       }
     }
   }
@@ -800,7 +888,7 @@ void ChangeDirCommand::execute()
     // change dir to the parent
     if (0 == chdir(parent_dir.c_str())) // success
     {
-      CD_PATH_HISTORY.push_back(curr_dir);
+      CD_PATH_HISTORY = curr_dir;
     }
     else
     {
@@ -813,7 +901,7 @@ void ChangeDirCommand::execute()
     // change dir to the path given
     if (0 == chdir(getArgs().front().c_str())) // success
     {
-      CD_PATH_HISTORY.push_back(getArgs().front());
+      CD_PATH_HISTORY = curr_dir;
     }
     else
     {
@@ -850,7 +938,7 @@ JobsCommand::JobsCommand(const char *cmd_line)
 {
   if (getName() != "jobs")
   {
-    throw std::logic_error("JobsCommand::JobsCommand");
+    throw std::logic_error("wrong name");
   }
 }
 
@@ -873,7 +961,7 @@ ForegroundCommand::ForegroundCommand(const char *cmd_line)
 {
   if (getName() != "fg")
   {
-    throw std::logic_error("ForegroundCommand::ForegroundCommand");
+    throw std::logic_error("wrong name");
   }
   JobsList &jobslist = SmallShell::getInstance().getJobsList();
 
@@ -932,7 +1020,7 @@ void ForegroundCommand::execute()
   std::cout << job->getCMDLine() << " " << pid << "\n";
   // job->getCommand()->setGround(GroundType::Foreground);
   jobslist.removeJobById(m_id);
-  if (waitpid(pid, nullptr, WUNTRACED) != 0) // options == 0 will wait for the process to finish
+  if (waitpid(pid, nullptr, WUNTRACED) == -1) // options == 0 will wait for the process to finish
   {
     perror("smash error: waitpid failed");
   }
@@ -946,7 +1034,7 @@ QuitCommand::QuitCommand(const char *cmd_line)
 {
   if (getName() != "quit")
   {
-    throw std::logic_error("QuitCommand::QuitCommand");
+    throw std::logic_error("wrong name");
   }
 }
 
@@ -982,29 +1070,40 @@ KillCommand::KillCommand(const char *cmd_line)
 {
   if (getName() != "kill")
   {
-    throw std::logic_error("KillCommand::KillCommand");
-  }
-
-  if (getArgs().size() != 2)
-  {
-    std::cerr << "smash error: kill: invalid arguments\n";
-    throw std::logic_error("KillCommand::KillCommand");
+    throw std::logic_error("wrong name");
   }
 
   try
   {
-    m_job_id = std::stoi(getArgs().back());
+    m_job_id = std::stoi(getArgs().at(1));
     // check if the job id actually exists
     if (SmallShell::getInstance().getJobsList().getJobById(m_job_id) == nullptr)
     {
       std::cerr << "smash error: kill: job-id " << m_job_id << " does not exist\n";
       throw std::logic_error("KillCommand::KillCommand");
     }
+
+    if (getArgs().size() != 2)
+    {
+      std::cerr << "smash error: kill: invalid arguments\n";
+      throw std::logic_error("KillCommand::KillCommand");
+    }
+
     // should remove the - before the signal number before std::stoi
     m_signal_number = std::stoi(getArgs().front()); // kill -9 3 this will give -9 (int)
-    m_signal_number = -m_signal_number;             // this will make the -9 to 9
+    if (m_signal_number > 0)
+    {
+      std::cerr << "smash error: kill: invalid arguments\n";
+      throw std::logic_error("KillCommand::KillCommand");
+    }
+    m_signal_number = -m_signal_number; // this will make the -9 to 9
   }
-  catch (const std::exception &e)
+  catch (const std::invalid_argument &e)
+  {
+    std::cerr << "smash error: kill: invalid arguments\n";
+    throw std::logic_error("KillCommand::KillCommand");
+  }
+  catch (const std::out_of_range &e)
   {
     std::cerr << "smash error: kill: invalid arguments\n";
     throw std::logic_error("KillCommand::KillCommand");
@@ -1027,9 +1126,7 @@ void KillCommand::execute()
       perror("smash error: kill failed");
       return;
     }
-
     std::cout << "signal number " << m_signal_number << " was sent to pid " << job->getJobPid() << "\n";
-    job_list.removeJobById(m_job_id);
   }
 }
 
@@ -1038,7 +1135,7 @@ void KillCommand::execute()
  */
 
 /* The JobEntry class methods */
-JobsList::JobEntry::JobEntry(const std::string& cmd, pid_t job_pid, int job_id)
+JobsList::JobEntry::JobEntry(const std::string &cmd, pid_t job_pid, int job_id)
     : m_command(cmd),
       m_job_pid(job_pid),
       m_job_id(job_id)
@@ -1047,7 +1144,6 @@ JobsList::JobEntry::JobEntry(const std::string& cmd, pid_t job_pid, int job_id)
 
 JobsList::JobEntry::~JobEntry()
 {
-
 }
 
 const std::string &JobsList::JobEntry::getCMDLine()
@@ -1084,7 +1180,7 @@ JobsList::~JobsList()
 // assumes a valid command
 void JobsList::addJob(Command *cmd, pid_t pid)
 {
-  if (cmd && waitpid(pid, nullptr, WNOHANG) != -1)
+  if (cmd)
   {
     m_jobs.push_back(JobEntry(cmd->getCMDLine(), pid, (m_jobs.size() ? getLastJob()->getJobID() + 1 : 1)));
   }
@@ -1119,7 +1215,8 @@ void JobsList::removeFinishedJobs()
   for (JobsList::JobEntry &job : m_jobs)
   {
     // TODO what happens when its zombie?
-    if (waitpid(job.getJobPid(), nullptr, WNOHANG) > 0)
+    int res = waitpid(job.getJobPid(), nullptr, WNOHANG);
+    if (res == -1 || res == job.getJobPid())
     {
       ids.push_back(job.getJobID());
     }
@@ -1184,9 +1281,8 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
 
 void SmallShell::executeCommand(const char *cmd_line)
 {
-
-  Command *cmd = CreateCommand(cmd_line);
   m_background_jobs.removeFinishedJobs();
+  Command *cmd = CreateCommand(cmd_line);
   if (cmd)
   {
     try
@@ -1239,7 +1335,10 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    // std::cout << e.what() << '\n';
+    if (std::string(e.what()) == "RedirectionCommand::RedirectionCommand")
+    {
+      return nullptr;
+    }
   }
 
   try
@@ -1248,7 +1347,10 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    // std::cout << e.what() << '\n';
+    if (std::string(e.what()) == "PipeCommand::PipeCommand")
+    {
+      return nullptr;
+    }
   }
 
   try
@@ -1257,7 +1359,10 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    // std::cout << e.what() << '\n';
+    if (std::string(e.what()) == "ChangePromptCommand::ChangePromptCommand")
+    {
+      return nullptr;
+    }
   }
 
   try
@@ -1266,7 +1371,10 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    // std::cout << e.what() << '\n';
+    if (std::string(e.what()) == "ShowPidCommand::ShowPidCommand")
+    {
+      return nullptr;
+    }
   }
 
   try
@@ -1275,7 +1383,22 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    // std::cout << e.what() << '\n';
+    if (std::string(e.what()) == "GetCurrDirCommand::GetCurrDirCommand")
+    {
+      return nullptr;
+    }
+  }
+
+  try
+  {
+    return new ChangeDirCommand(cmd_line);
+  }
+  catch (const std::exception &e)
+  {
+    if (std::string(e.what()) == "ChangeDirCommand::ChangeDirCommand")
+    {
+      return nullptr;
+    }
   }
 
   try
@@ -1284,7 +1407,10 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    // std::cout << e.what() << '\n';
+    if (std::string(e.what()) == "JobsCommand::JobsCommand")
+    {
+      return nullptr;
+    }
   }
 
   try
@@ -1293,7 +1419,10 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    // std::cout << e.what() << '\n';
+    if (std::string(e.what()) == "ForegroundCommand::ForegroundCommand")
+    {
+      return nullptr;
+    }
   }
 
   try
@@ -1302,7 +1431,10 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    // std::cout << e.what() << '\n';
+    if (std::string(e.what()) == "QuitCommand::QuitCommand")
+    {
+      return nullptr;
+    }
   }
 
   try
@@ -1311,7 +1443,10 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    // std::cout << e.what() << '\n';
+    if (std::string(e.what()) == "KillCommand::KillCommand")
+    {
+      return nullptr;
+    }
   }
 
   try
@@ -1320,7 +1455,10 @@ Command *SmallShell::CreateCommand_aux(const char *cmd_line)
   }
   catch (const std::exception &e)
   {
-    // std::cout << e.what() << '\n';
+    if (std::string(e.what()) == "ChmodCommand::ChmodCommand")
+    {
+      return nullptr;
+    }
   }
 
   try

@@ -104,12 +104,12 @@ public:
 private:
   /* variables */
   PipeType m_pipe_type;
-  Command *m_cmd_1;
-  Command *m_cmd_2;
+  std::string m_cmd_1;
+  std::string m_cmd_2;
 
   PipeCommand::PipeType _get_pipe_type(const char *cmd_line);
-  Command *_get_cmd_1(const char *cmd_line);
-  Command *_get_cmd_2(const char *cmd_line);
+  std::string _get_cmd_1(const char *cmd_line);
+  std::string _get_cmd_2(const char *cmd_line);
 };
 
 /* *
@@ -128,7 +128,7 @@ class RedirectionCommand : public Command
   };
   /* variables */
   RedirectionType m_redirection_type;
-  Command *m_command;
+  std::string m_command;
   std::string m_file_path; // the path can be absolute or relative
 
   RedirectionType get_redirection_type(const char *cmd_line);
@@ -226,7 +226,7 @@ public:
 class ChangeDirCommand : public BuiltInCommand
 {
   /* static variables */
-  static std::list<std::string> CD_PATH_HISTORY;
+  static std::string CD_PATH_HISTORY;
 
   /* methods */
   std::string get_parent_directory(const std::string &path) const;
