@@ -469,7 +469,7 @@ void PipeCommand::execute()
     if (close(files[READ]) == -1)
     {
       perror("smash error: close failed");
-      return
+      return;
     }
     if (close(files[WRITE]) == -1)
     {
