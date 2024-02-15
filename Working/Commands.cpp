@@ -298,15 +298,32 @@ void RedirectionCommand::execute()
   SmallShell &smash = SmallShell::getInstance();
   int new_fd;
   int dupped_fd = dup(1);
-  close(1);
+  if (dupped_fd == -1)
+  {
+    perror("smash error: dup failed");
+    return;
+  }
+  if (close(1))
+  {
+    perror("smash error: close failed");
+    return;
+  }
   if (m_redirection_type == RedirectionType::Override)
   {
     new_fd = open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0655);
     if (new_fd == -1)
     {
       perror("smash error: open failed"); ////////////
-      dup2(dupped_fd, 1);
-      close(dupped_fd);
+      if (dup2(dupped_fd, 1) == -1)
+      {
+        perror("smash error: dup2 failed");
+        return;
+      }
+      if (close(dupped_fd) == -1)
+      {
+        perror("smash error: close failed");
+        return;
+      }
       return;
     }
   }
@@ -316,8 +333,16 @@ void RedirectionCommand::execute()
     if (new_fd == -1)
     {
       perror("smash error: open failed");
-      dup2(dupped_fd, 1);
-      close(dupped_fd);
+      if (dup2(dupped_fd, 1) == -1)
+      {
+        perror("smash error: dup2 failed");
+        return;
+      }
+      if (close(dupped_fd))
+      {
+        perror("smash error: close failed");
+        return;
+      }
       return;
     }
   }
@@ -329,89 +354,17 @@ void RedirectionCommand::execute()
     perror("smash error: close failed");
     exit(0);
   }
-  dup2(dupped_fd, 1);
-  close(dupped_fd);
-}
-
-/*void RedirectionCommand::execute()
-{
-  // this command will not be tested with &
+  if (dup2(dupped_fd, 1) == -1)
   {
-    IN = 0,
-    OUT = 1,
-  };
-  enum STANDARD
-
-  int original_stdout = dup(STANDARD::OUT); // ? should we use STDOUT_FILENO
-  if (original_stdout == -1)
-  {
-    perror("smash error: dup failed");
+    perror("smash error: dup2 failed");
     return;
-    // exit(EXIT_FAILURE);
   }
-  // close the original fd for standard output
-  if (close(STANDARD::OUT))
+  if (close(dupped_fd) == -1)
   {
     perror("smash error: close failed");
     return;
   }
-
-  if (m_redirection_type == RedirectionType::Override)
-  {
-    // open a new/existing file for overriding (its fd will be 1)
-    // O_WRONLY: Open for writing only.
-    // O_CREAT: Create file if it does not exist.
-    // O_TRUNC: Truncate size to 0.
-    // 0644: File permission bits (user: read+write, group: read, others: read).
-    int file_d = open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (file_d == -1)
-    {
-      perror("smash error: open failed");
-      if (dup2(original_stdout, STANDARD::OUT) == -1)
-      {
-        perror("smash  error: dup2 failed");
-        return;
-      }
-      return;
-    }
-    else if (file_d != STANDARD::OUT)
-    {
-      std::cout << "sadasda\n";
-    }
-  }
-  else // (m_redirection_type == RedirectionType::Append)
-  {
-    // open a new/existing file for appending (its fd will be 1)
-    // O_WRONLY: Open for writing only.
-    // O_CREAT: Create file if it does not exist.
-    // O_APPEND: Append data at the end of the file.
-    // 0644: File permission bits (user: read+write, group: read, others: read).
-    if (open(m_file_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0666) == -1)
-    {
-      perror("smash error: open failed");
-      if (dup2(original_stdout, STANDARD::OUT) == -1)
-      {
-        perror("smash  error: dup2 failed");
-        return;
-      }
-      return;
-    }
-  }
-
-  // execute command
-  SmallShell::getInstance().executeCommand(m_command.c_str());
-
-  // Restore the original stdout
-  if (dup2(original_stdout, STANDARD::OUT) == -1)
-  {
-    perror("smash  error: dup2 failed");
-    return;
-  }
-
-
-  // program returned to the original state where stdout in the standard output stream.
 }
-*/
 
 // * Special Commands 2 (PipeCommand)
 
@@ -493,10 +446,15 @@ PipeCommand::~PipeCommand()
 
 void PipeCommand::execute()
 {
-  enum PIPE { READ = 0, WRITE = 1 };
+  enum PIPE
+  {
+    READ = 0,
+    WRITE = 1
+  };
 
   int files[2];
-  if (pipe(files) == -1) {
+  if (pipe(files) == -1)
+  {
     perror("smash error: pipe failed");
     return;
   }
@@ -505,52 +463,117 @@ void PipeCommand::execute()
 
   // Fork and execute the first command
   pid_t pid1 = fork();
-  if (pid1 == -1) {
+  if (pid1 == -1)
+  {
     perror("smash error: fork failed");
-    close(files[READ]);
-    close(files[WRITE]);
+    if (close(files[READ]) == -1)
+    {
+      perror("smash error: close failed");
+      return
+    }
+    if (close(files[WRITE]) == -1)
+    {
+      perror("smash error: close failed");
+      return;
+    }
     return;
   }
 
-  if (pid1 == 0) { // Child process for the first command
-    setpgrp();
-    if (m_pipe_type == PipeType::Standard) {
-      dup2(files[WRITE], STDOUT_FILENO); // Redirect stdout to pipe's write end
-    } else { // PipeType::Error
-      dup2(files[WRITE], STDERR_FILENO); // Redirect stderr to pipe's write end
+  if (pid1 == 0)
+  { // Child process for the first command
+    if (setpgrp() == -1)
+    {
+      perror("smash error: setpgrp failed");
+      return;
     }
-    close(files[READ]); // Close unused read end
-    close(files[WRITE]); // Close after dup2
+    if (m_pipe_type == PipeType::Standard)
+    {
+      if (dup2(files[WRITE], STDOUT_FILENO) == -1) // Redirect stdout to pipe's write end
+      {
+        perror("smash error: dup2 failed");
+        return;
+      }
+    }
+    else
+    {                                              // PipeType::Error
+      if (dup2(files[WRITE], STDERR_FILENO) == -1) // Redirect stderr to pipe's write end
+      {
+        perror("smash error: dup2 failed");
+        return;
+      }
+    }
+    if (close(files[READ]) == -1)
+    {
+      perror("smash error: close failed");
+      return;
+    }
+    if (close(files[WRITE]) == -1) // Close after dup2
+    {
+      perror("smash error: close failed");
+      return;
+    }
     smash.executeCommand(m_cmd_1.c_str());
     exit(0);
-  } else {
-    close(files[WRITE]); // Close write end in parent after forking the first child
+  }
+  else
+  {
+    if (close(files[WRITE]) == -1) // Close write end in parent after forking the first child
+    {
+      perror("smash error: close failed");
+      return;
+    }
   }
 
   // Fork and execute the second command
   pid_t pid2 = fork();
-  if (pid2 == -1) {
+  if (pid2 == -1)
+  {
     perror("smash error: fork failed");
-    close(files[READ]); // Ensure read end is also closed on this error path
+    if (close(files[READ]) == -1) // Ensure read end is also closed on this error path
+    {
+      perror("smash error: close failed");
+      return;
+    }
     return;
   }
 
-  if (pid2 == 0) { // Child process for the second command
-    setpgrp();
-    dup2(files[READ], STDIN_FILENO); // Redirect stdin to pipe's read end
-    close(files[READ]); // Close after dup2
+  if (pid2 == 0)
+  { // Child process for the second command
+    if (setpgrp() == -1)
+    {
+      perror("smash error: setpgrp failed");
+      return;
+    }
+    if(dup2(files[READ], STDIN_FILENO) == -1) // Redirect stdin to pipe's read end
+    {
+      perror("smash error: dup2 failed");
+      return;
+    }
+    if(close(files[READ]) == -1)              // Close after dup2
+    {
+      perror("smash error: close failed");
+      return;
+    }
     smash.executeCommand(m_cmd_2.c_str());
     exit(0);
-  } else {
-    close(files[READ]); // Close read end in parent after forking the second child
+  }
+  else
+  {
+    if(close(files[READ])) // Close read end in parent after forking the second child
+    {
+      perror("smash error: close failed");
+      return;
+    }
   }
 
   // Wait for both child processes to complete
-  if (waitpid(pid1, nullptr, WUNTRACED) == -1) {
+  if (waitpid(pid1, nullptr, WUNTRACED) == -1)
+  {
     perror("smash error: waitpid failed");
   }
 
-  if (waitpid(pid2, nullptr, WUNTRACED) == -1) {
+  if (waitpid(pid2, nullptr, WUNTRACED) == -1)
+  {
     perror("smash error: waitpid failed");
   }
 }
