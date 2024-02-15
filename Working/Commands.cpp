@@ -474,8 +474,8 @@ PipeCommand::PipeCommand(const char *cmd_line)
   if (_is_pipe_command(cmd_line))
   {
     m_pipe_type = _get_pipe_type(cmd_line);
-    m_cmd_1 = _get_cmd_1(cmd_line);
-    m_cmd_2 = _get_cmd_2(cmd_line);
+    m_cmd_1 = _trim(_get_cmd_1(cmd_line));
+    m_cmd_2 = _trim(_get_cmd_2(cmd_line));
     if (m_cmd_1 == "" || m_cmd_2 == "")
     {
       throw std::logic_error("PipeCommand::PipeCommand");
@@ -493,100 +493,65 @@ PipeCommand::~PipeCommand()
 
 void PipeCommand::execute()
 {
-  // this command will not be tested with &
-  enum PIPE
-  {
-    READ = 0,
-    WRITE = 1
-  };
+  enum PIPE { READ = 0, WRITE = 1 };
 
-  enum STANDARD
-  {
-    IN = 0,
-    OUT = 1,
-    ERR = 2
-  };
-
-  // create the pipe
-  int files[] = {-1, -1};
-  if (pipe(files) == -1)
-  {
+  int files[2];
+  if (pipe(files) == -1) {
     perror("smash error: pipe failed");
     return;
   }
 
-  // smash instance
   SmallShell &smash = SmallShell::getInstance();
 
-  // fork and execute the first command
+  // Fork and execute the first command
   pid_t pid1 = fork();
-  if (pid1 == -1)
-  {
+  if (pid1 == -1) {
     perror("smash error: fork failed");
-    close(files[0]);
-    close(files[1]);
+    close(files[READ]);
+    close(files[WRITE]);
     return;
   }
 
-  if (pid1 == 0)
-  {
+  if (pid1 == 0) { // Child process for the first command
     setpgrp();
-    if (m_pipe_type == PipeType::Standard)
-    {
-      dup2(files[1], 1);
+    if (m_pipe_type == PipeType::Standard) {
+      dup2(files[WRITE], STDOUT_FILENO); // Redirect stdout to pipe's write end
+    } else { // PipeType::Error
+      dup2(files[WRITE], STDERR_FILENO); // Redirect stderr to pipe's write end
     }
-    else //(m_pipe_type == PipeType::Error)
-    {
-      dup2(files[1], 2);
-    }
+    close(files[READ]); // Close unused read end
+    close(files[WRITE]); // Close after dup2
     smash.executeCommand(m_cmd_1.c_str());
-    close(files[0]);
-    close(files[1]);
     exit(0);
-  }
-  else
-  {
-    if (m_pipe_type == PipeType::Standard)
-    {
-      dup2(1, files[1]);
-    }
-    else //(m_pipe_type == PipeType::Error)
-    {
-      dup2(2, files[1]);
-    }
-    if (waitpid(pid1, nullptr, WUNTRACED) == -1)
-    {
-      perror("smash error: waitpid failed");
-      return;
-    }
+  } else {
+    close(files[WRITE]); // Close write end in parent after forking the first child
   }
 
-  // fork and execute the second command
-
+  // Fork and execute the second command
   pid_t pid2 = fork();
-  if (pid2 == -1)
-  {
+  if (pid2 == -1) {
     perror("smash error: fork failed");
+    close(files[READ]); // Ensure read end is also closed on this error path
+    return;
   }
 
-  if (pid2 == 0)
-  {
+  if (pid2 == 0) { // Child process for the second command
     setpgrp();
-    dup2(files[0], STDIN_FILENO);
+    dup2(files[READ], STDIN_FILENO); // Redirect stdin to pipe's read end
+    close(files[READ]); // Close after dup2
     smash.executeCommand(m_cmd_2.c_str());
-    close(files[0]);
-    close(files[1]);
     exit(0);
+  } else {
+    close(files[READ]); // Close read end in parent after forking the second child
   }
-  else
-  {
-    if (waitpid(pid2, nullptr, WUNTRACED) == -1)
-    {
-      perror("smash error: waitpid failed");
-      return;
-    }
-    close(files[0]);
-    close(files[1]);
+
+  // Wait for both child processes to complete
+  if (waitpid(pid1, nullptr, WUNTRACED) == -1) {
+    perror("smash error: waitpid failed");
+  }
+
+  if (waitpid(pid2, nullptr, WUNTRACED) == -1) {
+    perror("smash error: waitpid failed");
   }
 }
 
