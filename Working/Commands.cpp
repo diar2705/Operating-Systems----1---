@@ -427,12 +427,12 @@ bool _is_pipe_command(const char *cmd_line)
 PipeCommand::PipeType PipeCommand::_get_pipe_type(const char *cmd_line)
 {
   std::string s(cmd_line);
-  unsigned int index_of_line = s.find_first_of("|");
-  unsigned int index_of_amp = s.find_first_of("&");
+  int index_of_line = s.find_first_of("|");
+  int index_of_amp = s.find_first_of("&");
 
-  if (index_of_line != std::string::npos)
+  if (index_of_line != -1)
   {
-    if (index_of_amp != std::string::npos)
+    if (index_of_amp == -1)
     {
       return PipeType::Standard;
     }
